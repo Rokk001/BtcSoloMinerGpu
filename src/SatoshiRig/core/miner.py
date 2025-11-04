@@ -32,6 +32,12 @@ class Miner :
         self.state = state
         self.log = logger
         self.total_hash_count = 0  # Persistent total hash count across loops
+        
+        # Check compute backend configuration
+        compute_backend = self.cfg.get("compute" , {}).get("backend" , "cpu")
+        if compute_backend != "cpu":
+            self.log.warning(f"GPU backend '{compute_backend}' is configured but not yet implemented. Using CPU backend.")
+            self.log.warning("GPU mining (CUDA/OpenCL) is planned but not yet available. See PROJECT_STATUS.md for details.")
 
     def _get_current_block_height(self) -> int :
         net = self.cfg["network"]
@@ -141,7 +147,20 @@ class Miner :
 
             nonce_hex = hex(random.getrandbits(32))[2 :].zfill(8)
             block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
-            hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
+            # TODO: Implement GPU hashing (CUDA/OpenCL) when backend is not "cpu"
+            # Currently always uses CPU via hashlib
+            compute_backend = self.cfg.get("compute" , {}).get("backend" , "cpu")
+            if compute_backend == "cuda":
+                # Future: Use CUDA for SHA256 hashing
+                # hash_hex = self._hash_cuda(block_header)
+                hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
+            elif compute_backend == "opencl":
+                # Future: Use OpenCL for SHA256 hashing
+                # hash_hex = self._hash_opencl(block_header)
+                hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
+            else:
+                # CPU backend (current implementation)
+                hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
             hash_hex = binascii.hexlify(hash_hex).decode()
             hash_count += 1
             self.total_hash_count += 1

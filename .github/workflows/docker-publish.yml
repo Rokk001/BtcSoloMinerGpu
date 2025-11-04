@@ -22,6 +22,8 @@ jobs:
             packages: write
             # Need admin permissions to change package visibility
             id-token: write
+            # Repository admin permissions might be needed for package visibility
+            administration: write
 
         steps:
             - name: Checkout repository
@@ -80,33 +82,100 @@ jobs:
                   && sudo apt update \
                   && sudo apt install gh -y
 
-            - name: Make package public
+            - name: Make package public automatically
               run: |
-                  # Get the repository name in lowercase (GHCR uses lowercase)
+                  PACKAGE_NAME="satoshirig"
                   IMAGE_NAME_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+                  OWNER="${{ github.repository_owner }}"
+                  OWNER_LOWER=$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')
 
-                  echo "Attempting to make package public: ${IMAGE_NAME_LOWER}"
+                  echo "🔍 Making package public: ${PACKAGE_NAME}"
+                  echo "Repository: ${{ github.repository }}"
+                  echo "Owner: ${OWNER}"
 
-                  # Wait a moment for the package to be fully created
-                  sleep 5
+                  # Wait for package to be fully created after push
+                  echo "⏳ Waiting for package to be available..."
+                  sleep 10
 
-                  # Try to set package visibility to public using GitHub API
-                  # First try with user endpoint
-                  gh api \
-                    -X PATCH \
-                    /user/packages/container/${IMAGE_NAME_LOWER}/ \
-                    -f visibility=public \
-                    || \
-                  # If that fails, try with org endpoint
-                  gh api \
-                    -X PATCH \
-                    /orgs/${{ github.repository_owner }}/packages/container/${IMAGE_NAME_LOWER}/ \
-                    -f visibility=public \
-                    || echo "Warning: Could not automatically set package to public. Please set it manually:"
-                  echo "1. Go to: https://github.com/${{ github.repository_owner }}?tab=packages"
-                  echo "2. Find the 'satoshirig' package"
-                  echo "3. Click on it, then go to Package settings"
-                  echo "4. Scroll down to 'Danger Zone' and click 'Change visibility'"
-                  echo "5. Select 'Public' and confirm"
+                  # Try multiple methods with retries
+                  MAX_RETRIES=5
+                  RETRY_COUNT=0
+                  SUCCESS=false
+
+                  while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SUCCESS" = false ]; do
+                    RETRY_COUNT=$((RETRY_COUNT + 1))
+                    echo ""
+                    echo "🔄 Attempt ${RETRY_COUNT}/${MAX_RETRIES}..."
+
+                    # Method 1: User endpoint
+                    if gh api -X PATCH /user/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1; then
+                      echo "✅ SUCCESS: Package set to public via user endpoint!"
+                      SUCCESS=true
+                      break
+                    fi
+
+                    # Method 2: Org endpoint (original case)
+                    if gh api -X PATCH /orgs/${OWNER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1; then
+                      echo "✅ SUCCESS: Package set to public via org endpoint!"
+                      SUCCESS=true
+                      break
+                    fi
+
+                    # Method 3: Org endpoint (lowercase)
+                    if gh api -X PATCH /orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1; then
+                      echo "✅ SUCCESS: Package set to public!"
+                      SUCCESS=true
+                      break
+                    fi
+
+                    if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                      echo "⏳ Retrying in 5 seconds..."
+                      sleep 5
+                    fi
+                  done
+
+                  if [ "$SUCCESS" = false ]; then
+                    echo ""
+                    echo "❌ All attempts failed. Trying alternative approach..."
+                    
+                    # Alternative: Use curl with Bearer token
+                    TOKEN="${{ secrets.GITHUB_TOKEN }}"
+                    
+                    # Try with curl directly
+                    curl -X PATCH \
+                      -H "Accept: application/vnd.github.v3+json" \
+                      -H "Authorization: Bearer ${TOKEN}" \
+                      -H "Content-Type: application/json" \
+                      -d '{"visibility":"public"}' \
+                      "https://api.github.com/user/packages/container/${PACKAGE_NAME}" 2>&1 || \
+                    curl -X PATCH \
+                      -H "Accept: application/vnd.github.v3+json" \
+                      -H "Authorization: Bearer ${TOKEN}" \
+                      -H "Content-Type: application/json" \
+                      -d '{"visibility":"public"}' \
+                      "https://api.github.com/orgs/${OWNER}/packages/container/${PACKAGE_NAME}" 2>&1 || \
+                    curl -X PATCH \
+                      -H "Accept: application/vnd.github.v3+json" \
+                      -H "Authorization: Bearer ${TOKEN}" \
+                      -H "Content-Type: application/json" \
+                      -d '{"visibility":"public"}' \
+                      "https://api.github.com/orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME}" 2>&1
+                    
+                    if [ $? -eq 0 ]; then
+                      echo "✅ SUCCESS: Package set to public via curl!"
+                      SUCCESS=true
+                    fi
+                  fi
+
+                  if [ "$SUCCESS" = true ]; then
+                    echo ""
+                    echo "✅✅✅ Package is now PUBLIC! ✅✅✅"
+                    echo "Verify at: https://ghcr.io/v2/${OWNER_LOWER}/${PACKAGE_NAME}/manifests/latest"
+                  else
+                    echo ""
+                    echo "❌ Could not set package to public automatically."
+                    echo "This might require manual intervention or repository admin permissions."
+                    exit 1
+                  fi
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

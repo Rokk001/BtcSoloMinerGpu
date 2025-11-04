@@ -34,20 +34,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Set image name (lowercase)
-              id: image
-              run: |
-                  OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-                  IMAGE_NAME="${OWNER_LOWER}/${{ env.PACKAGE_NAME }}"
-                  FULL_IMAGE="${{ env.REGISTRY }}/${IMAGE_NAME}"
-                  echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
-                  echo "full_image=${FULL_IMAGE}" >> $GITHUB_OUTPUT
+      - name: Set image name (lowercase)
+        id: image
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME="${OWNER_LOWER}/${{ env.PACKAGE_NAME }}"
+          FULL_IMAGE="${{ env.REGISTRY }}/${IMAGE_NAME}"
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
+          echo "full_image=${FULL_IMAGE}" >> $GITHUB_OUTPUT
 
-            - name: Extract metadata (for tags)
-              id: meta
-              uses: docker/metadata-action@v5
-              with:
-                  images: ${{ steps.image.outputs.full_image }}
+      - name: Extract metadata (for tags)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.full_image }}
           tags: |
             type=ref,event=tag
             type=semver,pattern={{version}}

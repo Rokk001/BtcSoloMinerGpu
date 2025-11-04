@@ -31,6 +31,7 @@ class Miner :
         self.pool = pool_client
         self.state = state
         self.log = logger
+        self.total_hash_count = 0  # Persistent total hash count across loops
 
     def _get_current_block_height(self) -> int :
         net = self.cfg["network"]
@@ -110,7 +111,6 @@ class Miner :
 
         prefix_zeros = '0' * self.cfg["miner"]["hash_log_prefix_zeros"]
         hash_count = 0
-        total_hash_count = 0
         start_time = time.time()
 
         while True :
@@ -137,8 +137,8 @@ class Miner :
             hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
             hash_hex = binascii.hexlify(hash_hex).decode()
             hash_count += 1
-            total_hash_count += 1
-            update_status("total_hashes" , total_hash_count)
+            self.total_hash_count += 1
+            update_status("total_hashes" , self.total_hash_count)
 
             if hash_hex.startswith(prefix_zeros) :
                 self.log.debug('Candidate hash %s at height %s' , hash_hex , current_height + 1)

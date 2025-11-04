@@ -1,14 +1,11 @@
-version: "3.8"
-
 services:
   satoshirig:
     container_name: satoshirig
-    # Build from local Dockerfile (default)
+    # Option 1: Build from local Dockerfile (default)
     build:
       context: .
       dockerfile: Dockerfile
-    # IMPORTANT: Do not use image: below if you want to build locally
-    # Only uncomment image: and comment out build: if you have published this image to a registry
+    # Option 2: Use public image from GHCR (uncomment image: and comment out build: above)
     # image: ghcr.io/rokk001/satoshirig:latest
     restart: unless-stopped
     environment:

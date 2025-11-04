@@ -89,7 +89,23 @@ docker run --rm --runtime=nvidia \
 
 A pre-configured compose file is included (`docker-compose.yml`).
 
-**Important:** The compose file uses `build: .` to build from the local Dockerfile. If you see an error about pulling an image from `ghcr.io`, make sure you're using `build` mode in Unraid, not `image` mode.
+**Important:** The compose file uses `build: .` to build from the local Dockerfile by default. 
+
+**Using the published Docker image (recommended):**
+If you want to use the pre-built public image from GitHub Container Registry instead of building locally:
+1. In `docker-compose.yml`, comment out the `build:` section
+2. Uncomment the `image: ghcr.io/rokk001/satoshirig:latest` line
+3. The image will be pulled automatically from GHCR
+
+**Note:** If you see "authentication required" errors, the package needs to be set to public:
+1. Go to https://github.com/Rokk001?tab=packages
+2. Click on the `satoshirig` package
+3. Click "Package settings" (on the right)
+4. Scroll to "Danger Zone"
+5. Click "Change visibility"
+6. Select "Public" and confirm
+
+Alternatively, trigger the workflow manually: Go to Actions → "Make Package Public" → Run workflow
 
 1) Set environment variables (Unraid UI or `.env` in project directory):
 
@@ -107,10 +123,34 @@ WEB_PORT=5000
 docker compose up -d
 ```
 
-**For Unraid:**
-- In the Unraid Docker Compose UI, make sure the container is set to use "Build" mode, not "Image" mode
-- If you see an error about `ghcr.io/rokk001/satoshirig:latest`, ensure you're building from the local Dockerfile
-- The compose file builds from the local `Dockerfile` in the project directory
+**For Unraid - IMPORTANT:**
+
+If you see "access denied" errors for `ghcr.io/rokk001/satoshirig:latest`, Unraid is trying to pull an image instead of building locally.
+
+**Solution 1: Fix in Unraid UI**
+1. Go to Docker Compose Manager or container settings
+2. Make sure "Build" is selected, NOT "Image"
+3. If you see an "Image" field with `ghcr.io/rokk001/satoshirig:latest`, DELETE it or clear it completely
+4. Make sure "Build Context" points to the project directory (where Dockerfile is located)
+5. Make sure "Dockerfile" is set to `Dockerfile` or `./Dockerfile`
+6. Save and restart the stack
+
+**Solution 2: Use alternative compose file**
+If Unraid keeps overriding the settings, use the build-only compose file:
+```bash
+docker-compose -f docker-compose.build.yml up -d
+```
+
+**Solution 3: Manual fix**
+1. Stop the container in Unraid
+2. Edit the `docker-compose.yml` file directly in Unraid (via terminal or file manager)
+3. Search for any line starting with `image:` (even if commented)
+4. Remove or comment out ALL `image:` lines completely
+5. Make sure ONLY `build:` section exists (with `context: .` and `dockerfile: Dockerfile`)
+6. Save the file
+7. Restart the stack in Unraid
+
+**The compose file MUST use `build:` not `image:` - NO image references allowed unless image is published!**
 
 **NVIDIA GPU Setup:**
 

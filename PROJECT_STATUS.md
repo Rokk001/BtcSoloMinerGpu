@@ -8,13 +8,14 @@ Updated: 2025-01-05
 
 ## Architecture
 - Package: `src/SatoshiRig`
-  - `core/miner.py`: `Miner` class (mining loop, logging).
+  - `core/miner.py`: `Miner` class (mining loop, logging, GPU support).
   - `core/state.py`: `MinerState` dataclass (runtime state).
+  - `core/gpu_compute.py`: GPU compute module (CUDA/OpenCL support for GPU mining).
   - `clients/pool_client.py`: CKPool TCP JSON client (subscribe/authorize/notify/submit).
   - `cli.py`: argparse CLI; loads config, sets up logging, builds dependencies, starts `Miner`.
   - `config.py`: loads TOML config (`CONFIG_FILE` override supported).
   - `miner.py`: thin compatibility facade.
-  - `web/server.py`: Flask web server with SocketIO for real-time mining status dashboard.
+  - `web/server.py`: Flask web server with SocketIO for real-time mining status dashboard with tabs (Overview, Performance, Analytics, Intelligence, History).
 - Config: `config/config.toml` (pool, network, logging, miner, compute).
 - Containerization: `Dockerfile`, `.dockerignore`, `docker-compose.yml` (Unraid-ready, NVIDIA GPU support via `--runtime=nvidia` or `--gpus all`).
 - CI: `.github/workflows/ci.yml` (install, format, test), `.github/workflows/release.yml` (releases from tags), `.github/workflows/docker-publish.yml` (builds and publishes Docker image to GHCR).
@@ -32,7 +33,7 @@ Updated: 2025-01-05
 - Refactor to class-based miner and client separation.
 - Neutral logging (no color banners, clean messages).
 - Externalized configuration (TOML) and CLI flags.
-- GPU backend selection prepared (cpu/cuda/opencl), with device index.
+- GPU mining support implemented (CUDA/OpenCL with parallel batch hashing for multiple nonces).
 - Dockerfile and Compose added; README updated.
 - CI hardening; package install in CI; auto-release workflow with correct permissions.
 - Web dashboard added: Flask + SocketIO for real-time mining status monitoring.
@@ -46,6 +47,7 @@ Updated: 2025-01-05
 - Uptime Calculation Fix: Fixed timezone issue by using Unix timestamps instead of ISO strings.
 - Mining Control: Pause button now stops mining via API endpoints (`/api/stop`, `/api/start`).
 - UI Improvements: Removed redundant "Connected" button, improved visual hierarchy with section headers.
+- GPU Mining Support: Implemented CUDA/OpenCL support with parallel batch hashing (1024 nonces per iteration), automatic GPU initialization, fallback to CPU if GPU unavailable.
 - Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed).
 
 ## Open Items / Next Steps

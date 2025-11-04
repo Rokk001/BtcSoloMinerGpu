@@ -177,7 +177,57 @@ def update_performance_metrics():
         logging.debug(f"Performance metrics error: {e}")
 
 
+# Formatting Functions
+def format_hash_number(value: float, unit: str = "H/s") -> str:
+    """Format hash numbers with magnitude units (K, M, G, T, P, E)"""
+    if value == 0:
+        return f"0 {unit}"
+    
+    abs_value = abs(value)
+    if abs_value < 1000:
+        return f"{value:.2f} {unit}"
+    elif abs_value < 1_000_000:
+        return f"{value / 1000:.2f} K{unit}"
+    elif abs_value < 1_000_000_000:
+        return f"{value / 1_000_000:.2f} M{unit}"
+    elif abs_value < 1_000_000_000_000:
+        return f"{value / 1_000_000_000:.2f} G{unit}"
+    elif abs_value < 1_000_000_000_000_000:
+        return f"{value / 1_000_000_000_000:.2f} T{unit}"
+    elif abs_value < 1_000_000_000_000_000_000:
+        return f"{value / 1_000_000_000_000_000:.2f} P{unit}"
+    else:
+        return f"{value / 1_000_000_000_000_000_000:.2f} E{unit}"
+
+
 # Mining Intelligence Functions (Feature 2)
+def format_time_to_block(seconds: float) -> str:
+    """Convert seconds to human-readable format: years, months, days"""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        return f"{seconds/60:.1f}m"
+    elif seconds < 86400:
+        return f"{seconds/3600:.1f}h"
+    else:
+        # Convert to years, months, days
+        total_days = seconds / 86400
+        years = int(total_days / 365)
+        remaining_days = total_days - (years * 365)
+        months = int(remaining_days / 30)
+        days = remaining_days - (months * 30)
+        
+        parts = []
+        if years > 0:
+            parts.append(f"{years} {'Jahr' if years == 1 else 'Jahre'}")
+        if months > 0:
+            parts.append(f"{months} {'Monat' if months == 1 else 'Monate'}")
+        if days > 0 or len(parts) == 0:
+            parts.append(f"{days:.1f} {'Tag' if days == 1 else 'Tage'}")
+        
+        return ", ".join(parts)
+
+
 def calculate_mining_intelligence():
     """Calculate estimated time to block, probability, and profitability"""
     with STATUS_LOCK:
@@ -212,16 +262,8 @@ def calculate_mining_intelligence():
             estimated_seconds = expected_hashes / hash_rate
             STATUS["estimated_time_to_block"] = estimated_seconds
             
-            # Convert to human-readable format
-            if estimated_seconds < 60:
-                time_str = f"{estimated_seconds:.1f}s"
-            elif estimated_seconds < 3600:
-                time_str = f"{estimated_seconds/60:.1f}m"
-            elif estimated_seconds < 86400:
-                time_str = f"{estimated_seconds/3600:.1f}h"
-            else:
-                time_str = f"{estimated_seconds/86400:.1f}d"
-            STATUS["estimated_time_to_block_formatted"] = time_str
+            # Convert to human-readable format (years, months, days)
+            STATUS["estimated_time_to_block_formatted"] = format_time_to_block(estimated_seconds)
             
             # Block found probability (simplified - probability of finding block in next hour)
             # P = 1 - e^(-hash_rate * 3600 / expected_hashes)
@@ -1200,6 +1242,28 @@ INDEX_HTML = """
             // Connection status removed - redundant information
         });
 
+        // Format hash numbers with magnitude units (K, M, G, T, P, E)
+        function formatHashNumber(value, unit = 'H/s') {
+            if (value === 0 || !value) return '0 ' + unit;
+            
+            const absValue = Math.abs(value);
+            if (absValue < 1000) {
+                return value.toFixed(2) + ' ' + unit;
+            } else if (absValue < 1000000) {
+                return (value / 1000).toFixed(2) + ' K' + unit;
+            } else if (absValue < 1000000000) {
+                return (value / 1000000).toFixed(2) + ' M' + unit;
+            } else if (absValue < 1000000000000) {
+                return (value / 1000000000).toFixed(2) + ' G' + unit;
+            } else if (absValue < 1000000000000000) {
+                return (value / 1000000000000).toFixed(2) + ' T' + unit;
+            } else if (absValue < 1000000000000000000) {
+                return (value / 1000000000000000).toFixed(2) + ' P' + unit;
+            } else {
+                return (value / 1000000000000000000).toFixed(2) + ' E' + unit;
+            }
+        }
+
         socket.on('status', (data) => {
             if (!startTime && data.start_time) {
                 // Handle both Unix timestamp (number) and ISO string (backward compatibility)
@@ -1218,10 +1282,10 @@ INDEX_HTML = """
             
             document.getElementById('currentHeight').textContent = data.current_height || 0;
             document.getElementById('bestDifficulty').textContent = data.best_difficulty ? data.best_difficulty.toFixed(2) : '0.00';
-            document.getElementById('hashRate').textContent = data.hash_rate ? data.hash_rate.toFixed(2) : '0.00';
-            document.getElementById('peakHashRate').textContent = data.peak_hash_rate ? data.peak_hash_rate.toFixed(2) : '0.00';
-            document.getElementById('averageHashRate').textContent = data.average_hash_rate ? data.average_hash_rate.toFixed(2) : '0.00';
-            document.getElementById('totalHashes').textContent = data.total_hashes ? data.total_hashes.toLocaleString() : '0';
+            document.getElementById('hashRate').textContent = formatHashNumber(data.hash_rate || 0, 'H/s');
+            document.getElementById('peakHashRate').textContent = formatHashNumber(data.peak_hash_rate || 0, 'H/s');
+            document.getElementById('averageHashRate').textContent = formatHashNumber(data.average_hash_rate || 0, 'H/s');
+            document.getElementById('totalHashes').textContent = formatHashNumber(data.total_hashes || 0, 'H');
             
             // Pool status
             const poolConnected = data.pool_connected || false;
@@ -1243,9 +1307,9 @@ INDEX_HTML = """
             document.getElementById('sharesRejected').textContent = `Rejected: ${data.shares_rejected || 0}`;
             
             // Statistics table
-            document.getElementById('statTotalHashes').textContent = (data.total_hashes || 0).toLocaleString();
-            document.getElementById('statPeakHashRate').textContent = (data.peak_hash_rate || 0).toFixed(2) + ' H/s';
-            document.getElementById('statAverageHashRate').textContent = (data.average_hash_rate || 0).toFixed(2) + ' H/s';
+            document.getElementById('statTotalHashes').textContent = formatHashNumber(data.total_hashes || 0, 'H');
+            document.getElementById('statPeakHashRate').textContent = formatHashNumber(data.peak_hash_rate || 0, 'H/s');
+            document.getElementById('statAverageHashRate').textContent = formatHashNumber(data.average_hash_rate || 0, 'H/s');
             document.getElementById('statSharesSubmitted').textContent = data.shares_submitted || 0;
             document.getElementById('statSharesAccepted').textContent = data.shares_accepted || 0;
             document.getElementById('statSharesRejected').textContent = data.shares_rejected || 0;
@@ -1339,6 +1403,7 @@ INDEX_HTML = """
                 document.getElementById('estimatedTimeToBlock').textContent = data.estimated_time_to_block_formatted;
             } else if (data.estimated_time_to_block) {
                 const seconds = data.estimated_time_to_block;
+                // Format as years, months, days
                 if (seconds < 60) {
                     document.getElementById('estimatedTimeToBlock').textContent = seconds.toFixed(1) + 's';
                 } else if (seconds < 3600) {
@@ -1346,7 +1411,25 @@ INDEX_HTML = """
                 } else if (seconds < 86400) {
                     document.getElementById('estimatedTimeToBlock').textContent = (seconds / 3600).toFixed(1) + 'h';
                 } else {
-                    document.getElementById('estimatedTimeToBlock').textContent = (seconds / 86400).toFixed(1) + 'd';
+                    // Convert to years, months, days
+                    const totalDays = seconds / 86400;
+                    const years = Math.floor(totalDays / 365);
+                    const remainingDays = totalDays - (years * 365);
+                    const months = Math.floor(remainingDays / 30);
+                    const days = remainingDays - (months * 30);
+                    
+                    const parts = [];
+                    if (years > 0) {
+                        parts.push(years + ' ' + (years === 1 ? 'Jahr' : 'Jahre'));
+                    }
+                    if (months > 0) {
+                        parts.push(months + ' ' + (months === 1 ? 'Monat' : 'Monate'));
+                    }
+                    if (days > 0 || parts.length === 0) {
+                        parts.push(days.toFixed(1) + ' ' + (days === 1 ? 'Tag' : 'Tage'));
+                    }
+                    
+                    document.getElementById('estimatedTimeToBlock').textContent = parts.join(', ');
                 }
             } else {
                 document.getElementById('estimatedTimeToBlock').textContent = 'N/A';

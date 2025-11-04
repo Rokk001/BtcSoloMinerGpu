@@ -17,6 +17,7 @@ src/
     core/
       miner.py             # Miner class (core logic)
       state.py             # MinerState dataclass
+      gpu_compute.py       # GPU compute module (CUDA/OpenCL support)
     web/
       server.py            # Flask web server with SocketIO for live dashboard
 config/
@@ -179,6 +180,8 @@ docker run --rm \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
+
+**Note:** GPU mining is implemented with parallel batch hashing (1024 nonces per iteration). The miner automatically initializes the selected GPU backend (CUDA or OpenCL) and falls back to CPU if the GPU is unavailable or not properly configured.
 
 #### Docker Run Parameters
 
@@ -396,7 +399,7 @@ Switching network source:
 
 ### Notes
 
-- GPU backend parameters are prepared; hash calculation currently uses CPU. A CUDA/OpenCL implementation can be added modularly via `compute` section.
+- GPU mining support is implemented with CUDA/OpenCL backends. The miner automatically uses GPU if available and configured, otherwise falls back to CPU. GPU mining uses parallel batch hashing (1024 nonces per iteration) for improved performance. For optimal performance, GPU kernels can be further optimized.
 
 ### Releases
 

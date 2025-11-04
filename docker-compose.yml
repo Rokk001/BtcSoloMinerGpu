@@ -26,6 +26,14 @@ services:
       - ./config:/app/config:ro
     ports:
       - "${WEB_PORT:-5000}:5000"
+    labels:
+      # Docker Desktop / Portainer WebUI Navigation
+      - "com.docker.compose.service.webui=true"
+      - "traefik.enable=true"
+      - "traefik.http.services.satoshirig.loadbalancer.server.port=5000"
+      - "org.opencontainers.image.title=SatoshiRig"
+      - "org.opencontainers.image.description=Bitcoin Solo Mining Client WebUI"
+      - "io.portainer.accesscontrol.public=true"
     # NVIDIA GPU support (required for NVIDIA GPU usage):
     # Uncomment the next line to enable NVIDIA runtime
     # This is required for containers that need NVIDIA GPU access

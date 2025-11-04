@@ -12,9 +12,11 @@ from ..clients.pool_client import PoolClient
 from .state import MinerState
 
 try :
-    from ..web import update_status
+    from ..web import update_status , update_pool_status
 except ImportError :
     def update_status(key , value) :
+        pass
+    def update_pool_status(connected , host = None , port = None) :
         pass
 
 
@@ -56,6 +58,7 @@ class Miner :
 
     def start(self) :
         self.pool.connect()
+        update_pool_status(True , self.pool.host , self.pool.port)
         sub_details , extranonce1 , extranonce2_size = self.pool.subscribe()
         self.state.subscription_details = sub_details
         self.state.extranonce1 = extranonce1
@@ -74,6 +77,7 @@ class Miner :
             self.state.clean_jobs
         ) = responses[0]['params']
         self.state.updated_prev_hash = self.state.prev_hash
+        update_status("job_id" , self.state.job_id)
         return self._mine_loop()
 
     def _mine_loop(self) :
@@ -106,11 +110,13 @@ class Miner :
 
         prefix_zeros = '0' * self.cfg["miner"]["hash_log_prefix_zeros"]
         hash_count = 0
+        total_hash_count = 0
         start_time = time.time()
 
         while True :
             if self.state.shutdown_flag :
                 update_status("running" , False)
+                update_pool_status(False)
                 break
 
             if self.state.prev_hash != self.state.updated_prev_hash :
@@ -119,6 +125,11 @@ class Miner :
                               self.state.height_to_best_difficulty[current_height + 1])
                 self.state.updated_prev_hash = self.state.prev_hash
                 self.state.height_to_best_difficulty[-1] = -1
+                # Update job_id from new block
+                responses = self.pool.read_notify()
+                if responses:
+                    self.state.job_id = responses[0]['params'][0]
+                    update_status("job_id" , self.state.job_id)
                 return self._mine_loop()
 
             nonce_hex = hex(random.getrandbits(32))[2 :].zfill(8)
@@ -126,6 +137,8 @@ class Miner :
             hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
             hash_hex = binascii.hexlify(hash_hex).decode()
             hash_count += 1
+            total_hash_count += 1
+            update_status("total_hashes" , total_hash_count)
 
             if hash_hex.startswith(prefix_zeros) :
                 self.log.debug('Candidate hash %s at height %s' , hash_hex , current_height + 1)
@@ -149,6 +162,13 @@ class Miner :
                 self.log.debug('Blockheader %s' , block_header)
                 ret = self.pool.submit(self.wallet , self.state.job_id , self.state.extranonce2 , self.state.ntime , nonce_hex)
                 self.log.info('Pool response %s' , ret)
+                try :
+                    from ..web import add_share
+                    response_str = ret.decode() if isinstance(ret , bytes) else str(ret)
+                    accepted = '"result":true' in response_str or '"result": true' in response_str or 'true' in response_str.lower()
+                    add_share(accepted , response_str)
+                except :
+                    pass
                 return True
 
 

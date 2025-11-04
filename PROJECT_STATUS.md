@@ -38,7 +38,7 @@ Updated: 2025-01-05
 - Web dashboard added: Flask + SocketIO for real-time mining status monitoring.
 - Configurable block source: web service or local Bitcoin Core RPC.
 - Docker image published to GitHub Container Registry (GHCR): `ghcr.io/rokk001/satoshirig:latest` (public, automatically set on publish).
-- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes).
+- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels).
 
 ## Open Items / Next Steps
 - Implement real GPU hashing (CUDA/OpenCL kernels) and auto-detection.

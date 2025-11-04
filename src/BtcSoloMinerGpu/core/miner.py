@@ -4,12 +4,18 @@ import logging
 import random
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any , Optional
 
 import requests
 
 from ..clients.pool_client import PoolClient
 from .state import MinerState
+
+try :
+    from ..web import update_status
+except ImportError :
+    def update_status(key , value) :
+        pass
 
 
 def now_time() :
@@ -25,9 +31,22 @@ class Miner :
         self.log = logger
 
     def _get_current_block_height(self) -> int :
-        r = requests.get(self.cfg["network"]["latest_block_url"] , timeout = self.cfg["network"]["request_timeout_secs"]) 
-        r.raise_for_status()
-        return int(r.json()['height'])
+        net = self.cfg["network"]
+        source = (net.get("source") or "web").lower()
+        if source == "local" :
+            # Bitcoin Core JSON-RPC: getblockcount
+            payload = {"jsonrpc": "1.0" , "id": "btcsolo" , "method": "getblockcount" , "params": []}
+            auth = None
+            if net.get("rpc_user") or net.get("rpc_password") :
+                auth = (net.get("rpc_user" , "") , net.get("rpc_password" , ""))
+            r = requests.post(net.get("rpc_url") , json = payload , auth = auth , timeout = net.get("request_timeout_secs" , 15))
+            r.raise_for_status()
+            data = r.json()
+            return int(data["result"])  # returns block count (height)
+        else :
+            r = requests.get(net["latest_block_url"] , timeout = net["request_timeout_secs"]) 
+            r.raise_for_status()
+            return int(r.json()['height'])
 
     def _build_block_header(self , prev_hash , merkle_root , ntime , nbits , nonce_hex) :
         return (
@@ -83,11 +102,15 @@ class Miner :
         reference_diff = int("00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" , 16)
 
         self.log.info('Mining block height %s' , current_height + 1)
+        update_status("current_height" , current_height + 1)
 
         prefix_zeros = '0' * self.cfg["miner"]["hash_log_prefix_zeros"]
+        hash_count = 0
+        start_time = time.time()
 
         while True :
             if self.state.shutdown_flag :
+                update_status("running" , False)
                 break
 
             if self.state.prev_hash != self.state.updated_prev_hash :
@@ -102,15 +125,23 @@ class Miner :
             block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
             hash_hex = hashlib.sha256(hashlib.sha256(binascii.unhexlify(block_header)).digest()).digest()
             hash_hex = binascii.hexlify(hash_hex).decode()
+            hash_count += 1
 
             if hash_hex.startswith(prefix_zeros) :
                 self.log.debug('Candidate hash %s at height %s' , hash_hex , current_height + 1)
+                update_status("last_hash" , hash_hex)
             this_hash_int = int(hash_hex , 16)
 
             difficulty = reference_diff / this_hash_int
 
             if self.state.height_to_best_difficulty[current_height + 1] < difficulty :
                 self.state.height_to_best_difficulty[current_height + 1] = difficulty
+                update_status("best_difficulty" , difficulty)
+
+            elapsed = time.time() - start_time
+            if elapsed > 0 :
+                hash_rate = hash_count / elapsed
+                update_status("hash_rate" , hash_rate)
 
             if hash_hex < target :
                 self.log.info('Block solved at height %s' , current_height + 1)

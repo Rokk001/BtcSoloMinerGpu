@@ -21,7 +21,14 @@ def load_config() :
     if not cfg_path :
         return {
             "pool": {"host": "solo.ckpool.org" , "port": 3333} ,
-            "network": {"latest_block_url": "https://blockchain.info/latestblock" , "request_timeout_secs": 15} ,
+            "network": {
+                "source": os.environ.get("BLOCK_SOURCE" , "web") ,  # web | local
+                "latest_block_url": "https://blockchain.info/latestblock" ,
+                "request_timeout_secs": 15 ,
+                "rpc_url": os.environ.get("BITCOIN_RPC_URL" , "http://127.0.0.1:8332") ,
+                "rpc_user": os.environ.get("BITCOIN_RPC_USER" , "") ,
+                "rpc_password": os.environ.get("BITCOIN_RPC_PASSWORD" , "")
+            } ,
             "logging": {"file": "miner.log" , "level": "INFO"} ,
             "miner": {
                 "restart_delay_secs": 2 ,

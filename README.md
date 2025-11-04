@@ -106,8 +106,14 @@ host = "solo.ckpool.org"
 port = 3333
 
 [network]
+# Datenquelle für aktuelle Blockhöhe: "web" (Blockchain Explorer) oder "local" (eigener Bitcoin Core Node)
+source = "web"            # web | local
 latest_block_url = "https://blockchain.info/latestblock"
 request_timeout_secs = 15
+# Für source = "local": Standard Bitcoin Core JSON-RPC
+rpc_url = "http://127.0.0.1:8332"
+rpc_user = ""
+rpc_password = ""
 
 [logging]
 file = "miner.log"
@@ -124,6 +130,10 @@ gpu_device = 0
 ```
 
 Override-Pfade per `--config` oder `CONFIG_FILE` möglich.
+
+Netzwerkquelle umschalten:
+- Webservice (Standard): keine weitere Aktion nötig; nutzt `https://blockchain.info/latestblock`.
+- Lokaler Node: setze in der Config `source = "local"` und trage `rpc_url`, `rpc_user`, `rpc_password` ein.
 
 ### Logging
 

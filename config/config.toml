@@ -3,8 +3,13 @@ host = "solo.ckpool.org"
 port = 3333
 
 [network]
+source = "web"            # web | local
 latest_block_url = "https://blockchain.info/latestblock"
 request_timeout_secs = 15
+# For source = "local": Standard Bitcoin Core JSON-RPC
+rpc_url = "http://127.0.0.1:8332"
+rpc_user = ""
+rpc_password = ""
 
 [logging]
 file = "miner.log"

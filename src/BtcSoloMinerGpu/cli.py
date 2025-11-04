@@ -2,12 +2,19 @@ import os
 import sys
 import argparse
 import logging
+import threading
 from signal import SIGINT , signal
 
 from .config import load_config
 from .clients.pool_client import PoolClient
 from .core.state import MinerState
 from .core.miner import Miner
+
+try :
+    from .web import start_web_server
+    WEB_AVAILABLE = True
+except ImportError :
+    WEB_AVAILABLE = False
 
 
 STATE = MinerState()
@@ -24,6 +31,8 @@ def main() :
     parser.add_argument("--config" , required = False , help = "Path to config.toml")
     parser.add_argument("--backend" , required = False , choices = ["cpu" , "cuda" , "opencl"])
     parser.add_argument("--gpu" , type = int , required = False , help = "GPU device index")
+    parser.add_argument("--web-port" , type = int , default = 5000 , help = "Web dashboard port (default: 5000)")
+    parser.add_argument("--no-web" , action = "store_true" , help = "Disable web dashboard")
     args = parser.parse_args()
 
     if args.config :
@@ -48,6 +57,12 @@ def main() :
     logger = logging.getLogger("BtcSoloMinerGpu")
 
     signal(SIGINT , _handle_sigint)
+
+    if WEB_AVAILABLE and not args.no_web :
+        web_port = args.web_port or int(os.environ.get("WEB_PORT" , "5000"))
+        web_thread = threading.Thread(target = start_web_server , args = ("0.0.0.0" , web_port) , daemon = True)
+        web_thread.start()
+        logger.info("Web dashboard started on port %s" , web_port)
 
     pool = PoolClient(cfg["pool"]["host"] , int(cfg["pool"]["port"]))
     miner = Miner(wallet , cfg , pool , STATE , logger)

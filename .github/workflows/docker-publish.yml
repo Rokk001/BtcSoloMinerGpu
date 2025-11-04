@@ -5,6 +5,7 @@ on:
         tags:
             - "v*"
     workflow_dispatch:
+        # Only run on tags or manual dispatch - NO branch pushes!
         inputs:
             tag:
                 description: "Tag to publish (e.g., v2.0.2)"

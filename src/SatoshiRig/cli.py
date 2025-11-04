@@ -60,6 +60,18 @@ def main() :
 
     if WEB_AVAILABLE and not args.no_web :
         web_port = args.web_port or int(os.environ.get("WEB_PORT" , "5000"))
+        from .web.server import update_status
+        update_status("wallet_address" , wallet)
+        # Determine blockchain explorer URL from config
+        network_config = cfg.get("network" , {})
+        if network_config.get("source") == "local" :
+            # For local RPC, use blockchain.info as default
+            explorer_base = "https://blockchain.info"
+        else :
+            # Extract base URL from latest_block_url (e.g., https://blockchain.info/latestblock -> https://blockchain.info)
+            latest_block_url = network_config.get("latest_block_url" , "https://blockchain.info/latestblock")
+            explorer_base = latest_block_url.rsplit("/" , 1)[0]
+        update_status("explorer_url" , f"{explorer_base}/address/{wallet}")
         web_thread = threading.Thread(target = start_web_server , args = ("0.0.0.0" , web_port) , daemon = True)
         web_thread.start()
         logger.info("Web dashboard started on port %s" , web_port)

@@ -20,6 +20,8 @@ STATUS: Dict = {
     "last_hash": None ,
     "uptime_seconds": 0 ,
     "start_time": None ,
+    "wallet_address": None ,
+    "explorer_url": None ,
     "errors": []
 }
 
@@ -137,6 +139,13 @@ INDEX_HTML = """
             word-break: break-all;
             margin-top: 10px;
         }
+        .status-card a {
+            transition: opacity 0.3s;
+        }
+        .status-card a:hover {
+            opacity: 0.8;
+            text-decoration: underline;
+        }
         .errors {
             background: rgba(255, 0, 0, 0.1);
             border-left: 4px solid #f87171;
@@ -205,6 +214,13 @@ INDEX_HTML = """
                 <h2>Last Hash</h2>
                 <div class="hash-display" id="lastHash">-</div>
             </div>
+            <div class="status-card">
+                <h2>Wallet Address</h2>
+                <div class="status-value" id="walletAddress" style="font-size: 1.2em; word-break: break-all;">-</div>
+                <div class="status-label">
+                    <a id="walletLink" href="#" target="_blank" style="color: #4ade80; text-decoration: none; font-size: 0.9em;">View on Blockchain Explorer</a>
+                </div>
+            </div>
         </div>
         <div class="errors" id="errorsContainer" style="display: none;">
             <h3>Errors</h3>
@@ -255,6 +271,18 @@ INDEX_HTML = """
                 ).join('');
             } else {
                 document.getElementById('errorsContainer').style.display = 'none';
+            }
+
+            // Update wallet address and link
+            if (data.wallet_address) {
+                document.getElementById('walletAddress').textContent = data.wallet_address;
+                if (data.explorer_url) {
+                    const link = document.getElementById('walletLink');
+                    link.href = data.explorer_url;
+                    link.style.display = 'inline';
+                } else {
+                    document.getElementById('walletLink').style.display = 'none';
+                }
             }
         });
 

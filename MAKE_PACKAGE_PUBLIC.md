@@ -1,5 +1,7 @@
 # How to Make Docker Package Public on GitHub Container Registry
 
+**Note:** The Docker package is automatically set to public when published via the workflow. This guide is only needed if the automated process fails or if you need to manually change visibility.
+
 If the automated workflow didn't set the package to public, follow these steps:
 
 ## Method 1: Via GitHub Web UI (Easiest)

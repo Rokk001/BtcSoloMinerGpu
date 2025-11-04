@@ -47,7 +47,15 @@ python -m SatoshiRig
 
 ### Docker
 
-Build:
+**Option 1: Use published image from GHCR (recommended):**
+
+```
+docker run --rm \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**Option 2: Build locally:**
 
 ```
 docker build -t satoshirig .
@@ -61,7 +69,7 @@ docker run --rm \
   satoshirig
 ```
 
-Run (NVIDIA GPU):
+Run (NVIDIA GPU) - Using published image from GHCR:
 
 **Method 1: Using --gpus flag (recommended for Docker 19.03+):**
 ```
@@ -69,7 +77,7 @@ docker run --rm --gpus all \
   -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
-  satoshirig
+  ghcr.io/rokk001/satoshirig:latest
 ```
 
 **Method 2: Using --runtime=nvidia (for older Docker versions or when --gpus is not available):**
@@ -80,7 +88,7 @@ docker run --rm --runtime=nvidia \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=all \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-  satoshirig
+  ghcr.io/rokk001/satoshirig:latest
 ```
 
 **Note:** The `--runtime=nvidia` parameter is required for Docker containers that need NVIDIA GPU access. Ensure you have the NVIDIA Container Toolkit installed on your system.
@@ -92,20 +100,17 @@ A pre-configured compose file is included (`docker-compose.yml`).
 **Important:** The compose file uses `build: .` to build from the local Dockerfile by default. 
 
 **Using the published Docker image (recommended):**
-If you want to use the pre-built public image from GitHub Container Registry instead of building locally:
+The Docker image is now available on GitHub Container Registry (GHCR) and automatically set to public:
+- Image: `ghcr.io/rokk001/satoshirig:latest`
+- Status: Public (automatically set on publish)
+- Package: https://github.com/Rokk001?tab=packages&package_name=satoshirig
+
+To use the pre-built public image from GitHub Container Registry instead of building locally:
 1. In `docker-compose.yml`, comment out the `build:` section
 2. Uncomment the `image: ghcr.io/rokk001/satoshirig:latest` line
 3. The image will be pulled automatically from GHCR
 
-**Note:** If you see "authentication required" errors, the package needs to be set to public:
-1. Go to https://github.com/Rokk001?tab=packages
-2. Click on the `satoshirig` package
-3. Click "Package settings" (on the right)
-4. Scroll to "Danger Zone"
-5. Click "Change visibility"
-6. Select "Public" and confirm
-
-Alternatively, trigger the workflow manually: Go to Actions → "Make Package Public" → Run workflow
+**Note:** The package is automatically set to public when published via the workflow. No manual steps required.
 
 1) Set environment variables (Unraid UI or `.env` in project directory):
 
@@ -150,7 +155,7 @@ docker-compose -f docker-compose.build.yml up -d
 6. Save the file
 7. Restart the stack in Unraid
 
-**The compose file MUST use `build:` not `image:` - NO image references allowed unless image is published!**
+**The compose file can use either `build:` for local builds or `image: ghcr.io/rokk001/satoshirig:latest` for the published image from GHCR.**
 
 **NVIDIA GPU Setup:**
 

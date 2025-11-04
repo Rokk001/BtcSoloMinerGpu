@@ -17,14 +17,15 @@ Updated: 2025-01-05
   - `web/server.py`: Flask web server with SocketIO for real-time mining status dashboard.
 - Config: `config/config.toml` (pool, network, logging, miner, compute).
 - Containerization: `Dockerfile`, `.dockerignore`, `docker-compose.yml` (Unraid-ready, NVIDIA GPU support via `--runtime=nvidia` or `--gpus all`).
-- CI: `.github/workflows/ci.yml` (install, format, test), `.github/workflows/release.yml` (releases from tags).
+- CI: `.github/workflows/ci.yml` (install, format, test), `.github/workflows/release.yml` (releases from tags), `.github/workflows/docker-publish.yml` (builds and publishes Docker image to GHCR).
 - Packaging: `pyproject.toml` with console script `satoshirig`.
 
 ## Usage
 - Local: `python -m SatoshiRig --wallet <ADDR> [--config ./config/config.toml] [--backend cpu|cuda|opencl] [--gpu 0] [--web-port 5000]`
-- Docker: `docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 satoshirig`
-- Docker (NVIDIA GPU): `docker run --rm --gpus all -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda satoshirig` or `docker run --rm --runtime=nvidia -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda satoshirig`
-- Compose/Unraid: `docker compose up -d` with env vars in Unraid UI or `.env`.
+- Docker (local build): `docker build -t satoshirig . && docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 satoshirig`
+- Docker (from GHCR): `docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 ghcr.io/rokk001/satoshirig:latest`
+- Docker (NVIDIA GPU): `docker run --rm --gpus all -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda ghcr.io/rokk001/satoshirig:latest` or `docker run --rm --runtime=nvidia -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda ghcr.io/rokk001/satoshirig:latest`
+- Compose/Unraid: `docker compose up -d` with env vars in Unraid UI or `.env`. Can use published image from GHCR: `ghcr.io/rokk001/satoshirig:latest`
 - Web Dashboard: Access via `http://localhost:5000` (or configured port) when running.
 
 ## Recent Work
@@ -36,14 +37,15 @@ Updated: 2025-01-05
 - CI hardening; package install in CI; auto-release workflow with correct permissions.
 - Web dashboard added: Flask + SocketIO for real-time mining status monitoring.
 - Configurable block source: web service or local Bitcoin Core RPC.
-- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation).
+- Docker image published to GitHub Container Registry (GHCR): `ghcr.io/rokk001/satoshirig:latest` (public, automatically set on publish).
+- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes).
 
 ## Open Items / Next Steps
 - Implement real GPU hashing (CUDA/OpenCL kernels) and auto-detection.
 - Add structured logging (JSON) option.
 - Add integration tests with a mocked pool server.
 - Optional metrics endpoint (Prometheus) for hashrate and connectivity.
-- Publish Docker image to a registry and switch compose to use the image tag.
+- ✅ Docker image published to GHCR: `ghcr.io/rokk001/satoshirig:latest` (public, automatically set on publish).
 
 ## How to Resume
 - For releases: push a new tag `vX.Y.Z` to trigger the GitHub release workflow.

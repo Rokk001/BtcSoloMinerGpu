@@ -4,6 +4,8 @@ on:
     push:
         tags:
             - "v*"
+        branches:
+            - main  # Also build on main branch pushes
     workflow_dispatch:
         inputs:
             tag:

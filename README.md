@@ -95,7 +95,7 @@ All configuration can be done via environment variables:
 **Basic CPU Mining (with web dashboard):**
 ```bash
 docker run --rm \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -103,7 +103,7 @@ docker run --rm \
 **CPU Mining (custom port, no web dashboard):**
 ```bash
 docker run --rm \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e WEB_PORT=0 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -111,7 +111,7 @@ docker run --rm \
 **CPU Mining with custom config file:**
 ```bash
 docker run --rm \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e CONFIG_FILE=/app/config/custom.toml \
   -v /path/to/your/config:/app/config:ro \
   -p 5000:5000 \
@@ -123,7 +123,7 @@ docker run --rm \
 **Method 1: Using --gpus flag (recommended for Docker 19.03+):**
 ```bash
 docker run --rm --gpus all \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -p 5000:5000 \
@@ -133,7 +133,7 @@ docker run --rm --gpus all \
 **Method 2: Using --runtime=nvidia (for older Docker versions or when --gpus is not available):**
 ```bash
 docker run --rm --runtime=nvidia \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=all \
@@ -145,7 +145,7 @@ docker run --rm --runtime=nvidia \
 **NVIDIA GPU - Specific GPU:**
 ```bash
 docker run --rm --gpus device=0 \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=0 \
@@ -156,7 +156,7 @@ docker run --rm --gpus device=0 \
 **NVIDIA GPU - Multiple GPUs:**
 ```bash
 docker run --rm --gpus '"device=0,1"' \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=0,1 \
@@ -173,7 +173,7 @@ For AMD GPUs or integrated GPUs using OpenCL:
 ```bash
 docker run --rm \
   --device=/dev/dri:/dev/dri \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=opencl \
   -e GPU_DEVICE=0 \
   -p 5000:5000 \
@@ -202,7 +202,7 @@ docker run -d \
   --name satoshirig \
   --restart unless-stopped \
   --gpus all \
-  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e CONFIG_FILE=/app/config/config.toml \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \

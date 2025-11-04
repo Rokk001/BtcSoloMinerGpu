@@ -2,12 +2,8 @@ name: Make Package Public
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Build and Publish Docker Image"]
-    types:
-      - completed
-    branches:
-      - main
+  # Removed workflow_run to prevent duplicate runs
+  # The docker-publish workflow already sets package to public
 
 jobs:
   make-public:

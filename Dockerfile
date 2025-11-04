@@ -1,8 +1,9 @@
 # For GPU support with NVIDIA, we use an NVIDIA CUDA base image.
-# This allows PyCUDA to be installed with CUDA support.
+# We use the devel image to get CUDA headers needed for PyCUDA compilation.
+# The runtime libraries are included in the devel image.
 # Note: Using --runtime=nvidia requires NVIDIA Container Toolkit to be installed on the host.
 # SatoshiRig - Bitcoin solo mining client
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
 # Install Python and system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

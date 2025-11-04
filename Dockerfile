@@ -21,6 +21,6 @@ ENV CONFIG_FILE="/app/config/config.toml"
 ENV COMPUTE_BACKEND="cpu"
 ENV GPU_DEVICE="0"
 
-CMD ["python", "-m", "BtcSoloMinerGpu"]
+CMD ["python", "-m", "SatoshiRig"]
 
 

@@ -3,11 +3,11 @@
 Updated: 2025-01-04
 
 ## Overview
-- Repository name: `BtcSoloMinerGpu`
+- Repository name: `SatoshiRig`
 - Purpose: Neutral Bitcoin solo-mining client with configurable compute backend, Docker/Compose support, CI/CD, and web dashboard.
 
 ## Architecture
-- Package: `src/BtcSoloMinerGpu`
+- Package: `src/SatoshiRig`
   - `core/miner.py`: `Miner` class (mining loop, logging).
   - `core/state.py`: `MinerState` dataclass (runtime state).
   - `clients/pool_client.py`: CKPool TCP JSON client (subscribe/authorize/notify/submit).
@@ -18,11 +18,11 @@ Updated: 2025-01-04
 - Config: `config/config.toml` (pool, network, logging, miner, compute).
 - Containerization: `Dockerfile`, `.dockerignore`, `docker-compose.yml` (Unraid-ready).
 - CI: `.github/workflows/ci.yml` (install, format, test), `.github/workflows/release.yml` (releases from tags).
-- Packaging: `pyproject.toml` with console script `btcsolo`.
+- Packaging: `pyproject.toml` with console script `satoshirig`.
 
 ## Usage
-- Local: `python -m BtcSoloMinerGpu --wallet <ADDR> [--config ./config/config.toml] [--backend cpu|cuda|opencl] [--gpu 0] [--web-port 5000]`
-- Docker: `docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 btcsominer-gpu`
+- Local: `python -m SatoshiRig --wallet <ADDR> [--config ./config/config.toml] [--backend cpu|cuda|opencl] [--gpu 0] [--web-port 5000]`
+- Docker: `docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 satoshirig`
 - Compose/Unraid: `docker compose up -d` with env vars in Unraid UI or `.env`.
 - Web Dashboard: Access via `http://localhost:5000` (or configured port) when running.
 

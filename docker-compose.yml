@@ -1,11 +1,11 @@
 version: "3.8"
 
 services:
-  btcsominer:
-    container_name: btcsominer-gpu
+  satoshirig:
+    container_name: satoshirig
     build: .
     # If you publish an image, replace the two lines above with:
-    # image: ghcr.io/yourorg/btcsominer-gpu:latest
+    # image: ghcr.io/yourorg/satoshirig:latest
     restart: unless-stopped
     environment:
       # REQUIRED: set your BTC wallet address
@@ -31,6 +31,6 @@ services:
     # AMD/OpenCL (expose iGPU if used):
     # devices:
     #   - /dev/dri:/dev/dri
-    command: ["python", "-m", "BtcSoloMinerGpu"]
+    command: ["python", "-m", "SatoshiRig"]
 
 

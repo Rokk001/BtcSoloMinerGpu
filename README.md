@@ -1,4 +1,4 @@
-## BtcSoloMinerGpu
+## SatoshiRig
 
 Minimal, neutral Bitcoin Solo-Mining Client with clean architecture, config via TOML, and Docker support.
 
@@ -6,7 +6,7 @@ Minimal, neutral Bitcoin Solo-Mining Client with clean architecture, config via 
 
 ```
 src/
-  BtcSoloMinerGpu/
+  SatoshiRig/
     __init__.py
     __main__.py
     cli.py                 # argparse CLI, Dependency Injection
@@ -32,7 +32,7 @@ pip install -r requirements.txt
 ### Run Locally
 
 ```
-python -m BtcSoloMinerGpu --wallet YOUR_BTC_ADDRESS --config ./config/config.toml --backend cpu --gpu 0
+python -m SatoshiRig --wallet YOUR_BTC_ADDRESS --config ./config/config.toml --backend cpu --gpu 0
 ```
 
 Alternatively via environment variables:
@@ -42,7 +42,7 @@ set WALLET_ADDRESS=YOUR_BTC_ADDRESS  # Windows
 set CONFIG_FILE=./config/config.toml
 set COMPUTE_BACKEND=cpu
 set GPU_DEVICE=0
-python -m BtcSoloMinerGpu
+python -m SatoshiRig
 ```
 
 ### Docker
@@ -50,7 +50,7 @@ python -m BtcSoloMinerGpu
 Build:
 
 ```
-docker build -t btcsominer-gpu .
+docker build -t satoshirig .
 ```
 
 Run (CPU):
@@ -58,7 +58,7 @@ Run (CPU):
 ```
 docker run --rm \
   -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
-  btcsominer-gpu
+  satoshirig
 ```
 
 Run (NVIDIA GPU):
@@ -68,7 +68,7 @@ docker run --rm --gpus all \
   -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
-  btcsominer-gpu
+  satoshirig
 ```
 
 ### Docker Compose (Unraid compatible)

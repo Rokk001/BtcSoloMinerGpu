@@ -47,51 +47,213 @@ python -m SatoshiRig
 
 ### Docker
 
+#### Quick Start
+
 **Option 1: Use published image from GHCR (recommended):**
 
-```
+```bash
 docker run --rm \
   -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
 
 **Option 2: Build locally:**
 
-```
+```bash
 docker build -t satoshirig .
-```
-
-Run (CPU):
-
-```
 docker run --rm \
   -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -p 5000:5000 \
   satoshirig
 ```
 
-Run (NVIDIA GPU) - Using published image from GHCR:
+#### Docker Image Details
+
+- **Published Image:** `ghcr.io/rokk001/satoshirig:latest` (public, automatically updated)
+- **Base Image:** `python:3.11-slim`
+- **Working Directory:** `/app`
+- **Default Config:** `/app/config/config.toml`
+- **Default Web Port:** `5000`
+
+#### Environment Variables
+
+All configuration can be done via environment variables:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `WALLET_ADDRESS` | ✅ **Yes** | - | Your Bitcoin wallet address (REQUIRED) |
+| `CONFIG_FILE` | No | `/app/config/config.toml` | Path to TOML config file inside container |
+| `COMPUTE_BACKEND` | No | `cpu` | Compute backend: `cpu`, `cuda`, or `opencl` |
+| `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
+| `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
+| `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
+| `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
+
+#### Docker Run Examples
+
+**Basic CPU Mining (with web dashboard):**
+```bash
+docker run --rm \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**CPU Mining (custom port, no web dashboard):**
+```bash
+docker run --rm \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e WEB_PORT=0 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**CPU Mining with custom config file:**
+```bash
+docker run --rm \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e CONFIG_FILE=/app/config/custom.toml \
+  -v /path/to/your/config:/app/config:ro \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+#### NVIDIA GPU Support
 
 **Method 1: Using --gpus flag (recommended for Docker 19.03+):**
-```
+```bash
 docker run --rm --gpus all \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
+  -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
 
 **Method 2: Using --runtime=nvidia (for older Docker versions or when --gpus is not available):**
-```
+```bash
 docker run --rm --runtime=nvidia \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=all \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
 
-**Note:** The `--runtime=nvidia` parameter is required for Docker containers that need NVIDIA GPU access. Ensure you have the NVIDIA Container Toolkit installed on your system.
+**NVIDIA GPU - Specific GPU:**
+```bash
+docker run --rm --gpus device=0 \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e COMPUTE_BACKEND=cuda \
+  -e GPU_DEVICE=0 \
+  -e NVIDIA_VISIBLE_DEVICES=0 \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**NVIDIA GPU - Multiple GPUs:**
+```bash
+docker run --rm --gpus '"device=0,1"' \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e COMPUTE_BACKEND=cuda \
+  -e GPU_DEVICE=0 \
+  -e NVIDIA_VISIBLE_DEVICES=0,1 \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+**Note:** The `--runtime=nvidia` parameter or `--gpus` flag is required for Docker containers that need NVIDIA GPU access. Ensure you have the NVIDIA Container Toolkit installed on your system.
+
+#### AMD/OpenCL GPU Support
+
+For AMD GPUs or integrated GPUs using OpenCL:
+
+```bash
+docker run --rm \
+  --device=/dev/dri:/dev/dri \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e COMPUTE_BACKEND=opencl \
+  -e GPU_DEVICE=0 \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+#### Docker Run Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `--rm` | Automatically remove container when it exits | `--rm` |
+| `--gpus` | GPU access (Docker 19.03+) | `--gpus all` or `--gpus device=0` |
+| `--runtime` | Container runtime (for NVIDIA GPU) | `--runtime=nvidia` |
+| `--device` | Device access (for AMD/OpenCL) | `--device=/dev/dri:/dev/dri` |
+| `-p` | Port mapping (host:container) | `-p 5000:5000` or `-p 8080:5000` |
+| `-v` | Volume mount (host:container) | `-v ./config:/app/config:ro` |
+| `-e` | Environment variable | `-e WALLET_ADDRESS=...` |
+| `-d` | Run in detached mode | `-d` |
+| `--name` | Container name | `--name satoshirig` |
+
+#### Complete Docker Run Command Example
+
+**Full-featured example with all options:**
+```bash
+docker run -d \
+  --name satoshirig \
+  --restart unless-stopped \
+  --gpus all \
+  -e WALLET_ADDRESS=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
+  -e CONFIG_FILE=/app/config/config.toml \
+  -e COMPUTE_BACKEND=cuda \
+  -e GPU_DEVICE=0 \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  -e WEB_PORT=5000 \
+  -v /path/to/config:/app/config:ro \
+  -p 5000:5000 \
+  ghcr.io/rokk001/satoshirig:latest
+```
+
+#### Building the Docker Image
+
+**Build from Dockerfile:**
+```bash
+docker build -t satoshirig .
+```
+
+**Build with custom tag:**
+```bash
+docker build -t satoshirig:v2.0.6 .
+```
+
+**Build with build arguments (if needed):**
+```bash
+docker build --build-arg PYTHON_VERSION=3.11 -t satoshirig .
+```
+
+#### Dockerfile Structure
+
+The Dockerfile creates a minimal Python 3.11 slim image with:
+- All Python dependencies installed
+- Source code copied to `/app/src`
+- Config files copied to `/app/config`
+- Default environment variables set
+- Entry point: `python -m SatoshiRig`
+
+#### Accessing the Web Dashboard
+
+After starting the container, access the web dashboard at:
+- **Local:** `http://localhost:5000` (or your mapped port)
+- **Remote:** `http://<host-ip>:5000` (or your mapped port)
+
+The dashboard shows:
+- Mining status
+- Current block height
+- Best difficulty
+- Hash rate
+- Uptime
+- Last hash
+- Wallet address with blockchain explorer link
 
 ### Docker Compose (Unraid compatible)
 

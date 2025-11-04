@@ -42,7 +42,11 @@ Updated: 2025-01-05
 - Mining Intelligence (Feature 2): Estimated time to block, block found probability, profitability calculator, difficulty trend analysis.
 - Advanced Visualizations (Feature 3): Hash Rate vs Difficulty comparison chart, Performance Metrics Dashboard.
 - WebGUI Navigation: Docker labels for Docker Desktop and Portainer WebUI integration.
-- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes).
+- WebApp Restructured: Complete reorganization with tabbed interface (Overview, Performance, Analytics, Intelligence, History) for better UX and logical grouping.
+- Uptime Calculation Fix: Fixed timezone issue by using Unix timestamps instead of ISO strings.
+- Mining Control: Pause button now stops mining via API endpoints (`/api/stop`, `/api/start`).
+- UI Improvements: Removed redundant "Connected" button, improved visual hierarchy with section headers.
+- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed).
 
 ## Open Items / Next Steps
 - Implement real GPU hashing (CUDA/OpenCL kernels) and auto-detection.

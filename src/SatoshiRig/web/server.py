@@ -301,6 +301,28 @@ def export_stats():
     )
 
 
+@app.route("/api/stop", methods=["POST"])
+def stop_mining():
+    """Stop mining by setting shutdown flag"""
+    global _miner_state
+    if _miner_state:
+        _miner_state.shutdown_flag = True
+        update_status("running", False)
+        return {"success": True, "message": "Mining stopped"}
+    return {"success": False, "message": "Miner state not available"}, 500
+
+
+@app.route("/api/start", methods=["POST"])
+def start_mining():
+    """Resume mining by clearing shutdown flag (Note: Requires miner restart to actually resume)"""
+    global _miner_state
+    if _miner_state:
+        _miner_state.shutdown_flag = False
+        update_status("running", True)
+        return {"success": True, "message": "Mining resumed (may require restart)"}
+    return {"success": False, "message": "Miner state not available"}, 500
+
+
 @socketio.on("connect")
 def handle_connect():
     emit("status", get_status())
@@ -326,18 +348,29 @@ def broadcast_status():
 def start_web_server(host: str = "0.0.0.0", port: int = 5000):
     logger = logging.getLogger("SatoshiRig.web")
     logger.info("Starting web server on %s:%s", host, port)
-    update_status("start_time", datetime.now().isoformat())
+    # Use Unix timestamp (seconds since epoch) for accurate uptime calculation
+    start_timestamp = time.time()
+    update_status("start_time", start_timestamp)
     update_status("running", True)
     with STATS_LOCK:
-        STATS["start_time"] = datetime.now().isoformat()
+        STATS["start_time"] = start_timestamp
     # Start background threads
     threading.Thread(target=broadcast_status, daemon=True).start()
     start_performance_monitoring()
     socketio.run(app, host=host, port=port, allow_unsafe_werkzeug=True)
 
 
+# Global reference to miner state for controlling mining
+_miner_state = None
+
+def set_miner_state(miner_state):
+    """Set the miner state reference for controlling mining"""
+    global _miner_state
+    _miner_state = miner_state
+
+
 # Export functions for use by miner
-__all__ = ["start_web_server", "update_status", "get_status", "add_share", "update_pool_status"]
+__all__ = ["start_web_server", "update_status", "get_status", "add_share", "update_pool_status", "set_miner_state"]
 
 
 INDEX_HTML = """
@@ -506,18 +539,6 @@ INDEX_HTML = """
             border-radius: 4px;
             font-size: 0.9em;
         }
-        .connection-status {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            font-weight: bold;
-            z-index: 1000;
-        }
-        .connected { background: var(--accent); color: #000; }
-        .disconnected { background: var(--error); color: #fff; }
         .pool-status {
             display: inline-block;
             padding: 4px 12px;
@@ -554,193 +575,293 @@ INDEX_HTML = """
         }
         .share-accepted { border-left: 3px solid var(--accent); }
         .share-rejected { border-left: 3px solid var(--error); }
+        
+        /* Tabs Navigation */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            flex-wrap: wrap;
+        }
+        .tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            transition: all 0.3s;
+            position: relative;
+            top: 2px;
+        }
+        .tab:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: rgba(74, 222, 128, 0.1);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Section Headers */
+        .section-header {
+            font-size: 1.5em;
+            margin: 30px 0 20px 0;
+            color: var(--accent);
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(74, 222, 128, 0.3);
+        }
+        .section-group {
+            margin-bottom: 40px;
+        }
+        
         @media (max-width: 768px) {
             h1 { font-size: 2em; }
             .status-grid { grid-template-columns: 1fr; }
             .header { flex-direction: column; align-items: flex-start; }
+            .tabs { flex-direction: column; gap: 5px; }
+            .tab { padding: 10px 16px; }
         }
     </style>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
-    <div class="connection-status" id="connectionStatus">
-        <span id="connectionText">Connecting...</span>
-    </div>
     <div class="container">
         <div class="header">
             <h1>SatoshiRig Status Dashboard</h1>
             <div class="controls">
                 <button class="btn" onclick="toggleTheme()">🌓 Theme</button>
                 <button class="btn" onclick="exportStats()">📥 Export</button>
-                <button class="btn" onclick="toggleAutoRefresh()">
+                <button class="btn" onclick="toggleMining()">
                     <span id="autoRefreshText">⏸️ Pause</span>
                 </button>
             </div>
         </div>
         
-        <div class="status-grid">
-            <div class="status-card">
-                <h2>Status</h2>
-                <div class="status-value running" id="runningStatus">-</div>
-                <div class="status-label">Mining Status</div>
-            </div>
-            <div class="status-card">
-                <h2>Pool Connection</h2>
-                <div class="status-value" id="poolStatus">-</div>
-                <div class="pool-status pool-disconnected" id="poolStatusBadge">Disconnected</div>
-                <div class="status-label" id="poolInfo">-</div>
-            </div>
-            <div class="status-card">
-                <h2>Current Block Height</h2>
-                <div class="status-value" id="currentHeight">-</div>
-                <div class="status-label">Block Height</div>
-            </div>
-            <div class="status-card">
-                <h2>Best Difficulty</h2>
-                <div class="status-value" id="bestDifficulty">-</div>
-                <div class="status-label">Difficulty</div>
-            </div>
-            <div class="status-card">
-                <h2>Hash Rate</h2>
-                <div class="status-value" id="hashRate">-</div>
-                <div class="status-label">Hashes/Second</div>
-            </div>
-            <div class="status-card">
-                <h2>Peak Hash Rate</h2>
-                <div class="status-value" id="peakHashRate">-</div>
-                <div class="status-label">Peak Performance</div>
-            </div>
-            <div class="status-card">
-                <h2>Average Hash Rate</h2>
-                <div class="status-value" id="averageHashRate">-</div>
-                <div class="status-label">Average Performance</div>
-            </div>
-            <div class="status-card">
-                <h2>Total Hashes</h2>
-                <div class="status-value" id="totalHashes">-</div>
-                <div class="status-label">Total Computed</div>
-            </div>
-            <div class="status-card">
-                <h2>Uptime</h2>
-                <div class="status-value" id="uptime">-</div>
-                <div class="status-label">Runtime</div>
-            </div>
-            <div class="status-card">
-                <h2>Shares</h2>
-                <div class="status-value" id="sharesSubmitted">0</div>
-                <div class="status-label">
-                    <span id="sharesAccepted" style="color: var(--accent);">Accepted: 0</span> | 
-                    <span id="sharesRejected" style="color: var(--error);">Rejected: 0</span>
+        <!-- Tabs Navigation -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('overview')">📊 Overview</button>
+            <button class="tab" onclick="showTab('performance')">⚡ Performance</button>
+            <button class="tab" onclick="showTab('analytics')">📈 Analytics</button>
+            <button class="tab" onclick="showTab('intelligence')">🧠 Intelligence</button>
+            <button class="tab" onclick="showTab('history')">📜 History</button>
+        </div>
+        
+        <!-- Overview Tab -->
+        <div id="overview" class="tab-content active">
+            <div class="section-group">
+                <h2 class="section-header">Mining Status</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h2>Status</h2>
+                        <div class="status-value running" id="runningStatus">-</div>
+                        <div class="status-label">Mining Status</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Pool Connection</h2>
+                        <div class="status-value" id="poolStatus">-</div>
+                        <div class="pool-status pool-disconnected" id="poolStatusBadge">Disconnected</div>
+                        <div class="status-label" id="poolInfo">-</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Current Block Height</h2>
+                        <div class="status-value" id="currentHeight">-</div>
+                        <div class="status-label">Block Height</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Best Difficulty</h2>
+                        <div class="status-value" id="bestDifficulty">-</div>
+                        <div class="status-label">Difficulty</div>
+                    </div>
                 </div>
             </div>
-            <div class="status-card">
-                <h2>Job ID</h2>
-                <div class="status-value" id="jobId" style="font-size: 1.2em;">-</div>
-                <div class="status-label">Current Mining Job</div>
+            
+            <div class="section-group">
+                <h2 class="section-header">Performance Metrics</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h2>Hash Rate</h2>
+                        <div class="status-value" id="hashRate">-</div>
+                        <div class="status-label">Hashes/Second</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Peak Hash Rate</h2>
+                        <div class="status-value" id="peakHashRate">-</div>
+                        <div class="status-label">Peak Performance</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Average Hash Rate</h2>
+                        <div class="status-value" id="averageHashRate">-</div>
+                        <div class="status-label">Average Performance</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Total Hashes</h2>
+                        <div class="status-value" id="totalHashes">-</div>
+                        <div class="status-label">Total Computed</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Uptime</h2>
+                        <div class="status-value" id="uptime">-</div>
+                        <div class="status-label">Runtime</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Shares</h2>
+                        <div class="status-value" id="sharesSubmitted">0</div>
+                        <div class="status-label">
+                            <span id="sharesAccepted" style="color: var(--accent);">Accepted: 0</span> | 
+                            <span id="sharesRejected" style="color: var(--error);">Rejected: 0</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="status-card">
-                <h2>Last Hash</h2>
-                <div class="hash-display" id="lastHash">-</div>
-            </div>
-            <div class="status-card">
-                <h2>Wallet Address</h2>
-                <div class="status-value" id="walletAddress" style="font-size: 1.2em; word-break: break-all;">-</div>
-                <div class="status-label">
-                    <a id="walletLink" href="#" target="_blank">View on Blockchain Explorer</a>
+            
+            <div class="section-group">
+                <h2 class="section-header">Mining Information</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h2>Wallet Address</h2>
+                        <div class="status-value" id="walletAddress" style="font-size: 1.2em; word-break: break-all;">-</div>
+                        <div class="status-label">
+                            <a id="walletLink" href="#" target="_blank">View on Blockchain Explorer</a>
+                        </div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Job ID</h2>
+                        <div class="status-value" id="jobId" style="font-size: 1.2em;">-</div>
+                        <div class="status-label">Current Mining Job</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Last Hash</h2>
+                        <div class="hash-display" id="lastHash">-</div>
+                    </div>
                 </div>
             </div>
         </div>
-
-        <div class="chart-container">
-            <h2>Hash Rate History</h2>
-            <canvas id="hashRateChart"></canvas>
-        </div>
-
-        <div class="chart-container">
-            <h2>Difficulty History</h2>
-            <canvas id="difficultyChart"></canvas>
-        </div>
-
-        <!-- Performance & Monitoring Section (Feature 1) -->
-        <div class="chart-container">
-            <h2>Performance & Monitoring</h2>
-            <div class="status-grid">
-                <div class="status-card">
-                    <h2>CPU Usage</h2>
-                    <div class="status-value" id="cpuUsage">-</div>
-                    <div class="status-label">CPU Utilization</div>
+        
+        <!-- Performance Tab -->
+        <div id="performance" class="tab-content">
+            <div class="section-group">
+                <h2 class="section-header">System Resources</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h2>CPU Usage</h2>
+                        <div class="status-value" id="cpuUsage">-</div>
+                        <div class="status-label">CPU Utilization</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Memory Usage</h2>
+                        <div class="status-value" id="memoryUsage">-</div>
+                        <div class="status-label">RAM Utilization</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>GPU Usage</h2>
+                        <div class="status-value" id="gpuUsage">-</div>
+                        <div class="status-label">GPU Utilization</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>GPU Temperature</h2>
+                        <div class="status-value" id="gpuTemperature">-</div>
+                        <div class="status-label">GPU Temp (°C)</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>GPU Memory</h2>
+                        <div class="status-value" id="gpuMemory">-</div>
+                        <div class="status-label">GPU Memory Usage</div>
+                    </div>
                 </div>
-                <div class="status-card">
-                    <h2>Memory Usage</h2>
-                    <div class="status-value" id="memoryUsage">-</div>
-                    <div class="status-label">RAM Utilization</div>
-                </div>
-                <div class="status-card">
-                    <h2>GPU Usage</h2>
-                    <div class="status-value" id="gpuUsage">-</div>
-                    <div class="status-label">GPU Utilization</div>
-                </div>
-                <div class="status-card">
-                    <h2>GPU Temperature</h2>
-                    <div class="status-value" id="gpuTemperature">-</div>
-                    <div class="status-label">GPU Temp (°C)</div>
-                </div>
-                <div class="status-card">
-                    <h2>GPU Memory</h2>
-                    <div class="status-value" id="gpuMemory">-</div>
-                    <div class="status-label">GPU Memory Usage</div>
+            </div>
+            
+            <div class="section-group">
+                <h2 class="section-header">Performance Dashboard</h2>
+                <div class="chart-container">
+                    <canvas id="performanceChart"></canvas>
                 </div>
             </div>
         </div>
-
-        <!-- Mining Intelligence Section (Feature 2) -->
-        <div class="chart-container">
-            <h2>Mining Intelligence</h2>
-            <div class="status-grid">
-                <div class="status-card">
-                    <h2>Estimated Time to Block</h2>
-                    <div class="status-value" id="estimatedTimeToBlock" style="font-size: 1.8em;">-</div>
-                    <div class="status-label">Expected Time</div>
+        
+        <!-- Analytics Tab -->
+        <div id="analytics" class="tab-content">
+            <div class="section-group">
+                <h2 class="section-header">Hash Rate History</h2>
+                <div class="chart-container">
+                    <canvas id="hashRateChart"></canvas>
                 </div>
-                <div class="status-card">
-                    <h2>Block Found Probability</h2>
-                    <div class="status-value" id="blockFoundProbability">-</div>
-                    <div class="status-label">Probability (Next Hour)</div>
+            </div>
+            
+            <div class="section-group">
+                <h2 class="section-header">Difficulty History</h2>
+                <div class="chart-container">
+                    <canvas id="difficultyChart"></canvas>
                 </div>
-                <div class="status-card">
-                    <h2>Estimated Profitability</h2>
-                    <div class="status-value" id="estimatedProfitability">-</div>
-                    <div class="status-label">BTC per Day</div>
-                </div>
-                <div class="status-card">
-                    <h2>Difficulty Trend</h2>
-                    <div class="status-value" id="difficultyTrend" style="font-size: 1.5em;">-</div>
-                    <div class="status-label">Network Trend</div>
+            </div>
+            
+            <div class="section-group">
+                <h2 class="section-header">Hash Rate vs Difficulty Comparison</h2>
+                <div class="chart-container">
+                    <canvas id="comparisonChart"></canvas>
                 </div>
             </div>
         </div>
-
-        <!-- Advanced Visualizations Section (Feature 3) -->
-        <div class="chart-container">
-            <h2>Hash Rate vs Difficulty Comparison</h2>
-            <canvas id="comparisonChart"></canvas>
-        </div>
-
-        <div class="chart-container">
-            <h2>Performance Metrics Dashboard</h2>
-            <canvas id="performanceChart"></canvas>
-        </div>
-
-        <div class="status-card">
-            <h2>Share History</h2>
-            <div class="share-history" id="shareHistory">
-                <div style="color: var(--text-secondary);">No shares submitted yet</div>
+        
+        <!-- Intelligence Tab -->
+        <div id="intelligence" class="tab-content">
+            <div class="section-group">
+                <h2 class="section-header">Mining Estimates</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h2>Estimated Time to Block</h2>
+                        <div class="status-value" id="estimatedTimeToBlock" style="font-size: 1.8em;">-</div>
+                        <div class="status-label">Expected Time</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Block Found Probability</h2>
+                        <div class="status-value" id="blockFoundProbability">-</div>
+                        <div class="status-label">Probability (Next Hour)</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Estimated Profitability</h2>
+                        <div class="status-value" id="estimatedProfitability">-</div>
+                        <div class="status-label">BTC per Day</div>
+                    </div>
+                    <div class="status-card">
+                        <h2>Difficulty Trend</h2>
+                        <div class="status-value" id="difficultyTrend" style="font-size: 1.5em;">-</div>
+                        <div class="status-label">Network Trend</div>
+                    </div>
+                </div>
             </div>
         </div>
-
-        <div class="status-card">
-            <h2>Statistics</h2>
-            <table class="stats-table">
+        
+        <!-- History Tab -->
+        <div id="history" class="tab-content">
+            <div class="section-group">
+                <h2 class="section-header">Share History</h2>
+                <div class="status-card">
+                    <div class="share-history" id="shareHistory">
+                        <div style="color: var(--text-secondary);">No shares submitted yet</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section-group">
+                <h2 class="section-header">Statistics</h2>
+                <div class="status-card">
+                    <table class="stats-table">
                 <tr>
                     <td>Total Hashes:</td>
                     <td id="statTotalHashes">0</td>
@@ -769,7 +890,9 @@ INDEX_HTML = """
                     <td>Success Rate:</td>
                     <td id="statSuccessRate">0.00%</td>
                 </tr>
-            </table>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div class="errors" id="errorsContainer" style="display: none;">
@@ -985,9 +1108,38 @@ INDEX_HTML = """
             window.location.href = '/export';
         }
 
+        let miningPaused = false;
+
+        function toggleMining() {
+            if (miningPaused) {
+                // Resume mining
+                fetch('/api/start', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            miningPaused = false;
+                            document.getElementById('autoRefreshText').textContent = '⏸️ Pause';
+                        }
+                    })
+                    .catch(error => console.error('Error starting mining:', error));
+            } else {
+                // Pause/Stop mining
+                fetch('/api/stop', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            miningPaused = true;
+                            document.getElementById('autoRefreshText').textContent = '▶️ Resume';
+                        }
+                    })
+                    .catch(error => console.error('Error stopping mining:', error));
+            }
+        }
+
         function toggleAutoRefresh() {
             autoRefresh = !autoRefresh;
-            document.getElementById('autoRefreshText').textContent = autoRefresh ? '⏸️ Pause' : '▶️ Resume';
+            const pauseText = miningPaused ? '▶️ Resume' : '⏸️ Pause';
+            document.getElementById('autoRefreshText').textContent = autoRefresh ? pauseText : '⏸️ Pause';
             if (autoRefresh) {
                 startRefresh();
             } else {
@@ -1002,25 +1154,62 @@ INDEX_HTML = """
             }, 3000);
         }
 
-        // Load saved theme
+        // Tab Navigation
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            // Find and activate the clicked tab button
+            document.querySelectorAll('.tab').forEach(btn => {
+                if (btn.textContent.includes(tabName.charAt(0).toUpperCase() + tabName.slice(1)) || 
+                    (tabName === 'overview' && btn.textContent.includes('Overview'))) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Save active tab
+            localStorage.setItem('activeTab', tabName);
+        }
+        
+        // Load saved theme and tab
         if (localStorage.getItem('theme') === 'light') {
             document.body.classList.add('light-theme');
         }
+        
+        const savedTab = localStorage.getItem('activeTab') || 'overview';
+        if (savedTab !== 'overview') {
+            document.querySelectorAll('.tab').forEach(btn => {
+                if (btn.textContent.includes(savedTab.charAt(0).toUpperCase() + savedTab.slice(1))) {
+                    btn.click();
+                }
+            });
+        }
 
         socket.on('connect', () => {
-            document.getElementById('connectionStatus').className = 'connection-status connected';
-            document.getElementById('connectionText').textContent = 'Connected';
             startRefresh();
         });
 
         socket.on('disconnect', () => {
-            document.getElementById('connectionStatus').className = 'connection-status disconnected';
-            document.getElementById('connectionText').textContent = 'Disconnected';
+            // Connection status removed - redundant information
         });
 
         socket.on('status', (data) => {
             if (!startTime && data.start_time) {
-                startTime = new Date(data.start_time);
+                // Handle both Unix timestamp (number) and ISO string (backward compatibility)
+                if (typeof data.start_time === 'number') {
+                    // Unix timestamp in seconds, convert to milliseconds for Date
+                    startTime = new Date(data.start_time * 1000);
+                } else {
+                    // ISO string (backward compatibility)
+                    startTime = new Date(data.start_time);
+                }
             }
 
             // Update status cards
@@ -1075,10 +1264,25 @@ INDEX_HTML = """
             
             // Uptime
             if (startTime) {
-                const uptime = Math.floor((new Date() - startTime) / 1000);
-                const hours = Math.floor(uptime / 3600);
-                const minutes = Math.floor((uptime % 3600) / 60);
-                const seconds = uptime % 60;
+                const now = new Date();
+                const uptime = Math.floor((now - startTime) / 1000);
+                // Ensure uptime is not negative (shouldn't happen, but safety check)
+                const safeUptime = Math.max(0, uptime);
+                const hours = Math.floor(safeUptime / 3600);
+                const minutes = Math.floor((safeUptime % 3600) / 60);
+                const seconds = safeUptime % 60;
+                document.getElementById('uptime').textContent = `${hours}h ${minutes}m ${seconds}s`;
+            } else if (data.start_time) {
+                // Fallback: calculate uptime from server-side timestamp if startTime not set
+                const startTimeValue = typeof data.start_time === 'number' 
+                    ? data.start_time * 1000 
+                    : new Date(data.start_time).getTime();
+                const now = Date.now();
+                const uptime = Math.floor((now - startTimeValue) / 1000);
+                const safeUptime = Math.max(0, uptime);
+                const hours = Math.floor(safeUptime / 3600);
+                const minutes = Math.floor((safeUptime % 3600) / 60);
+                const seconds = safeUptime % 60;
                 document.getElementById('uptime').textContent = `${hours}h ${minutes}m ${seconds}s`;
             }
 

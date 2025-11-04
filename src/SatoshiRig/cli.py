@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 import threading
+import time
 from signal import SIGINT , signal
 
 from .config import load_config
@@ -60,8 +61,10 @@ def main() :
 
     if WEB_AVAILABLE and not args.no_web :
         web_port = args.web_port or int(os.environ.get("WEB_PORT" , "5000"))
-        from .web.server import update_status
+        from .web.server import update_status , set_miner_state
         update_status("wallet_address" , wallet)
+        # Set miner state reference for web API control
+        set_miner_state(STATE)
         # Determine blockchain explorer URL from config
         network_config = cfg.get("network" , {})
         if network_config.get("source") == "local" :

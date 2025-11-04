@@ -2,8 +2,13 @@ name: Make Package Public
 
 on:
   workflow_dispatch:
-  # Only run on workflow_dispatch (manual trigger)
-  # Don't run automatically on push to avoid duplicate runs
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
 
 jobs:
   make-public:

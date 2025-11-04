@@ -26,44 +26,68 @@ jobs:
       - name: Make package public
         run: |
           PACKAGE_NAME="satoshirig"
+          OWNER="${{ github.repository_owner }}"
+          OWNER_LOWER=$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          
           echo "🔍 Attempting to make package public: ${PACKAGE_NAME}"
           echo "Repository: ${{ github.repository }}"
-          echo "Owner: ${{ github.repository_owner }}"
+          echo "Owner: ${OWNER} (lowercase: ${OWNER_LOWER})"
           
           # Wait a moment for any previous operations
-          sleep 2
+          sleep 3
           
-          # Method 1: Try user endpoint
-          echo "📦 Trying user endpoint..."
-          if gh api -X PATCH /user/packages/container/${PACKAGE_NAME} -f visibility=public 2>/dev/null; then
+          # First, list packages to see what's available
+          echo "📋 Listing available packages..."
+          gh api user/packages --jq '.[] | select(.name == "satoshirig") | {name: .name, type: .package_type, visibility: .visibility}' || echo "Could not list packages"
+          
+          # Method 1: Try user endpoint (for user-owned packages)
+          echo ""
+          echo "📦 Method 1: Trying user endpoint..."
+          RESULT=$(gh api -X PATCH /user/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
+          if [ $? -eq 0 ]; then
             echo "✅ SUCCESS: Package set to public via user endpoint!"
+            echo "${RESULT}"
             exit 0
+          else
+            echo "❌ User endpoint failed: ${RESULT}"
           fi
           
-          # Method 2: Try org endpoint
-          echo "📦 Trying org endpoint..."
-          if gh api -X PATCH /orgs/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME} -f visibility=public 2>/dev/null; then
+          # Method 2: Try org endpoint with original case
+          echo ""
+          echo "📦 Method 2: Trying org endpoint with ${OWNER}..."
+          RESULT=$(gh api -X PATCH /orgs/${OWNER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
+          if [ $? -eq 0 ]; then
             echo "✅ SUCCESS: Package set to public via org endpoint!"
+            echo "${RESULT}"
             exit 0
+          else
+            echo "❌ Org endpoint (${OWNER}) failed: ${RESULT}"
           fi
           
-          # Method 3: Try with repository owner name directly
-          echo "📦 Trying with owner name..."
-          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          if gh api -X PATCH /orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>/dev/null; then
+          # Method 3: Try org endpoint with lowercase
+          echo ""
+          echo "📦 Method 3: Trying org endpoint with ${OWNER_LOWER}..."
+          RESULT=$(gh api -X PATCH /orgs/${OWNER_LOWER}/packages/container/${PACKAGE_NAME} -f visibility=public 2>&1)
+          if [ $? -eq 0 ]; then
             echo "✅ SUCCESS: Package set to public!"
+            echo "${RESULT}"
             exit 0
+          else
+            echo "❌ Org endpoint (${OWNER_LOWER}) failed: ${RESULT}"
           fi
           
-          # If all methods fail, show error
-          echo "❌ Failed to set package to public automatically."
+          # If all methods fail, show detailed error
+          echo ""
+          echo "❌ All methods failed to set package to public automatically."
           echo ""
           echo "Please set it manually:"
-          echo "1. Go to: https://github.com/${{ github.repository_owner }}?tab=packages"
+          echo "1. Go to: https://github.com/${OWNER}?tab=packages"
           echo "2. Click on '${PACKAGE_NAME}' package"
           echo "3. Click 'Package settings'"
           echo "4. Scroll to 'Danger Zone'"
           echo "5. Click 'Change visibility' → Select 'Public'"
+          echo ""
+          echo "Or try this direct link: https://github.com/${OWNER}?tab=packages&package_name=${PACKAGE_NAME}"
           exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

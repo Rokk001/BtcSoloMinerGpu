@@ -1,11 +1,6 @@
 name: Build and Publish Docker Image
 
 on:
-  push:
-    tags:
-      - "v*"
-    branches-ignore:
-      - "*" # Explicitly ignore all branches - only run on tags
   workflow_dispatch:
 
 env:

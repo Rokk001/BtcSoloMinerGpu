@@ -1,16 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [ main, master ]
-    tags-ignore:
-      - 'v*'  # Don't run CI when tags are pushed
-    paths-ignore:
-      - '.github/workflows/docker-publish.yml'
-      - 'Dockerfile'
-      - 'docker-compose.yml'
-  pull_request:
-    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:

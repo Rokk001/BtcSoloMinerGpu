@@ -25,6 +25,7 @@
 - [Project Structure](#-project-structure)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
+ - [Deploy](#-deploy)
 
 ---
 
@@ -227,7 +228,7 @@ docker run -d \
 ### Docker Image Details
 
 - **Published Image**: `ghcr.io/rokk001/satoshirig:latest` (public, automatically updated)
-- **Base Image**: `nvidia/cuda:11.8.0-devel-ubuntu22.04` (includes CUDA development tools)
+- **Base Image**: Multi-stage build. Final image uses `nvidia/cuda:11.8.0-runtime-ubuntu22.04` (smaller). Build stage briefly uses `devel` to compile GPU wheels.
 - **Working Directory**: `/app`
 - **Default Config**: `/app/config/config.toml`
 - **Default Web Port**: `5000`
@@ -253,6 +254,15 @@ services:
       - "5000:5000"
     volumes:
       - ./logs:/app/logs
+
+### NVIDIA Container Toolkit
+
+To enable GPU access, install the NVIDIA Container Toolkit on the host and run with `--gpus all` (or `runtime: nvidia`). The toolkit passes the NVIDIA driver and devices into the container; the image only needs CUDA runtime libraries.
+
+- Docs: [NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit)
+
+Notes:
+- The image is now significantly smaller because the CUDA developer toolchain is not shipped in the final layer. GPU Python deps are compiled in a build stage and only the wheels are copied into the runtime image.
 ```
 
 Start with:
@@ -463,6 +473,14 @@ SatoshiRig/
 2. Select the `satoshirig` package
 3. Go to "Package settings" → "Change visibility" → "Make public"
 
+#### Pool notifications arrive partially or parsing fails
+
+**Solution**: The TCP client now uses line-buffered reads and tolerates partial frames. If issues persist, check network stability and pool availability.
+
+#### Manual-only workflows
+
+**Note**: CI, release, and Docker publish workflows run only via manual trigger (`workflow_dispatch`). See `DEPLOY.md` for how to publish the image and create a release.
+
 ---
 
 ## 🤝 Contributing
@@ -497,6 +515,10 @@ This project is licensed under the MIT License.
 - **GitHub Packages**: https://github.com/Rokk001?tab=packages&package_name=satoshirig
 
 ---
+
+## 🚀 Deploy
+
+See `DEPLOY.md` for manual publish via GitHub Actions and GPU run instructions. Workflows are manual-only; trigger them from Actions when you want to publish.
 
 ## 📝 Notes
 

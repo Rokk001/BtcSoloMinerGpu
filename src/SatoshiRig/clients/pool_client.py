@@ -34,11 +34,37 @@ class PoolClient :
 
     def read_notify(self) -> list:
         assert self.sock is not None
-        response_buffer = b''
-        while response_buffer.count(b'\n') < 4 and not (b'mining.notify' in response_buffer) :
-            response_buffer += self.sock.recv(1024)
-        responses = [json.loads(res) for res in response_buffer.decode().split('\n') if
-                     len(res.strip()) > 0 and 'mining.notify' in res]
+        # Robust line-buffered read with simple framing by newlines
+        # Keep reading until we see at least one mining.notify message
+        # and we have consumed a line ending.
+        buffer = bytearray()
+        messages: list[str] = []
+        self.sock.settimeout(self.timeout)
+        while True:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                break
+            buffer.extend(chunk)
+            while True:
+                try:
+                    newline_index = buffer.index(10)  # '\n'
+                except ValueError:
+                    break
+                line = buffer[:newline_index].decode(errors='ignore').strip()
+                del buffer[:newline_index + 1]
+                if line:
+                    messages.append(line)
+            # Stop once we have at least one notify message
+            if any('mining.notify' in m for m in messages):
+                break
+        responses = []
+        for m in messages:
+            try:
+                obj = json.loads(m)
+                if 'mining.notify' in m:
+                    responses.append(obj)
+            except json.JSONDecodeError:
+                continue
         return responses
 
     def submit(self , wallet_address: str , job_id: str , extranonce2: str , ntime: str , nonce_hex: str) -> bytes:

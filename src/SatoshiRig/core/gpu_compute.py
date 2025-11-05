@@ -181,8 +181,8 @@ class CUDAMiner:
                 for i in range(count):
                     nonce = (nonce_start + i) % (2**32)  # Wrap around at 2^32
                     header_copy = base_header.copy()
-                    # Update nonce in header (bytes 76-79)
-                    header_copy[76:80] = struct.pack('>I', nonce)
+                    # Update nonce in header (bytes 76-79, little-endian in Bitcoin block header)
+                    header_copy[76:80] = struct.pack('<I', nonce)
                     
                     # Double SHA256
                     hash1 = hashlib.sha256(bytes(header_copy)).digest()
@@ -304,8 +304,8 @@ class OpenCLMiner:
                 for i in range(count):
                     nonce = (nonce_start + i) % (2**32)  # Wrap around at 2^32
                     header_copy = base_header.copy()
-                    # Update nonce in header (bytes 76-79)
-                    header_copy[76:80] = struct.pack('>I', nonce)
+                    # Update nonce in header (bytes 76-79, little-endian in Bitcoin block header)
+                    header_copy[76:80] = struct.pack('<I', nonce)
                     
                     # Double SHA256
                     hash1 = hashlib.sha256(bytes(header_copy)).digest()

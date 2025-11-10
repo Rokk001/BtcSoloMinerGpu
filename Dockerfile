@@ -22,6 +22,7 @@ WORKDIR /wheelhouse
 
 COPY requirements.txt ./
 # Build wheels WITH dependencies so runtime can install offline from /wheelhouse
+# Note: Building with dependencies ensures all transitive dependencies are included
 RUN pip wheel -r requirements.txt -w /wheelhouse
 RUN pip wheel "pycuda>=2023.1" "pyopencl>=2023.1.2" "nvidia-ml-py>=12.0.0" -w /wheelhouse
 
@@ -47,9 +48,10 @@ WORKDIR /app
 COPY --from=builder /wheelhouse /wheelhouse
 COPY requirements.txt ./
 # Install dependencies from wheels (PyCUDA, PyOpenCL, and nvidia-ml-py for GPU monitoring)
+# Use --find-links to prefer wheels from /wheelhouse, but allow PyPI fallback for missing dependencies
 # These will be available when running with --runtime=nvidia or --gpus
-RUN pip install --no-cache-dir --no-index --find-links=/wheelhouse -r requirements.txt && \
-    pip install --no-cache-dir --no-index --find-links=/wheelhouse pycuda pyopencl nvidia-ml-py && \
+RUN pip install --no-cache-dir --find-links=/wheelhouse -r requirements.txt && \
+    pip install --no-cache-dir --find-links=/wheelhouse pycuda pyopencl nvidia-ml-py && \
     rm -rf /wheelhouse
 
 COPY src ./src

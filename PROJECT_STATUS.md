@@ -1,6 +1,6 @@
 # Project Status
 
-Updated: 2025-11-05
+Updated: 2025-01-27
 
 ## Overview
 - Repository name: `SatoshiRig`
@@ -53,7 +53,11 @@ Updated: 2025-11-05
 - Time Formatting: "Estimated Time to Block" now displays in years, months, and days in English (e.g., "145883385836 years, 0 months, 26.5 days" instead of "53247435828136.5d").
 - Hash Value Formatting: Hash values now display with magnitude units (K, M, G, T, P, E) for better readability (e.g., "145.79 KH/s" instead of "145788.53 H/s", "82.33 MH" instead of "82332425 H").
 - Workflow Improvements: Docker publish workflow no longer fails if package visibility change fails (image is still built and pushed successfully).
-- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed), `v2.4.0` (Time formatting and hash value magnitude units), `v2.5.0` (GPU mining improvements with NVIDIA CUDA base image, enhanced GPU initialization, sequential nonce counter), `v2.5.1` (Dockerfile python symlink fix), `v2.5.2` (CUDA devel image for PyCUDA compilation), `v2.5.3` (Time formatting to English, documentation update), `v2.5.4` (Workflow fix: don't fail if package visibility change fails).
+- Favicon Added: Modern SVG favicon with Bitcoin symbol and dashboard gradient design.
+- GPU Monitoring: Added nvidia-ml-py support for GPU metrics (usage, temperature, memory) in dashboard.
+- Docker Build Fix: Allow PyPI fallback for missing dependencies during Docker build.
+- Workflow Fix: Added `set +e` to prevent workflow failure when package visibility change fails.
+- Tags pushed: `v0.1.0`, `v0.1.1`, `v0.1.2`, `v1.0.0`, `v2.0.0` (project renamed to SatoshiRig), `v2.0.1` (NVIDIA GPU runtime support documentation), `v2.0.6-v2.0.10` (Docker image build and publish workflow fixes), `v2.1.0` (Complete WebUI overhaul with charts, stats, history, theme toggle, and Docker WebUI labels), `v2.2.0` (Performance & Monitoring, Mining Intelligence, Advanced Visualizations, WebGUI Navigation fixes), `v2.3.0` (WebApp restructured with tabs, Uptime fix, Pause button functionality, redundant Connected button removed), `v2.4.0` (Time formatting and hash value magnitude units), `v2.5.0` (GPU mining improvements with NVIDIA CUDA base image, enhanced GPU initialization, sequential nonce counter), `v2.5.1` (Dockerfile python symlink fix), `v2.5.2` (CUDA devel image for PyCUDA compilation), `v2.5.3` (Time formatting to English, documentation update), `v2.5.4` (Workflow fix: don't fail if package visibility change fails), `v2.5.5` (Favicon added, GPU monitoring support, Docker build fix, workflow improvements).
  - GPU Nonce Fix: Corrected nonce endianness to little-endian in GPU batch hashing.
  - Pool Client Robustness: Improved line-buffered parsing of `mining.notify` to handle partial TCP frames.
  - Config Validation: Enforced defaults and type casting across sections (pool, network, logging, miner, compute).

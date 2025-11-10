@@ -10,7 +10,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, jsonify
 from flask_socketio import SocketIO, emit
 
 from ..core.state import MinerState
@@ -75,7 +75,7 @@ STATS = {
     "total_hashes": 0,
     "peak_hash_rate": 0.0,
     "hash_rate_samples": deque(maxlen=300),  # Last 300 samples for average
-    "shares": [],
+    "shares": deque(maxlen=100),  # Last 100 shares to prevent memory leak
     "start_time": None
 }
 
@@ -113,7 +113,9 @@ def get_status() -> Dict:
         # Add statistics
         with STATS_LOCK:
             status["total_hashes"] = STATS["total_hashes"]
-            status["shares"] = STATS["shares"][-10:]  # Last 10 shares
+            # Convert deque to list and get last 10 shares
+            shares_list = list(STATS["shares"])
+            status["shares"] = shares_list[-10:]  # Last 10 shares
         return status
 
 
@@ -143,13 +145,16 @@ def update_performance_metrics():
     try:
         # CPU Usage
         cpu_percent = psutil.cpu_percent(interval=0.1)
-        STATUS["cpu_usage"] = cpu_percent
         
         # Memory Usage
         memory = psutil.virtual_memory()
-        STATUS["memory_usage"] = memory.percent
+        memory_percent = memory.percent
         
         # GPU Monitoring (NVIDIA)
+        gpu_usage = 0.0
+        gpu_temperature = 0.0
+        gpu_memory = 0.0
+        
         if PYNVML_AVAILABLE:
             try:
                 if not hasattr(update_performance_metrics, 'nvml_initialized'):
@@ -160,45 +165,43 @@ def update_performance_metrics():
                     except pynvml.NVMLError as e:
                         logging.warning(f"NVML initialization failed: {e}")
                         update_performance_metrics.nvml_initialized = False
-                        STATUS["gpu_usage"] = 0.0
-                        STATUS["gpu_temperature"] = 0.0
-                        STATUS["gpu_memory"] = 0.0
-                        return
                 
                 if update_performance_metrics.nvml_initialized:
                     try:
                         device_count = pynvml.nvmlDeviceGetCount()
                         if device_count == 0:
                             logging.debug("No NVIDIA GPUs found")
-                            STATUS["gpu_usage"] = 0.0
-                            STATUS["gpu_temperature"] = 0.0
-                            STATUS["gpu_memory"] = 0.0
                         else:
                             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                             util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                            STATUS["gpu_usage"] = util.gpu
+                            gpu_usage = util.gpu
                             
                             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-                            STATUS["gpu_temperature"] = temp
+                            gpu_temperature = temp
                             
                             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                            STATUS["gpu_memory"] = (mem_info.used / mem_info.total) * 100
+                            gpu_memory = (mem_info.used / mem_info.total) * 100
                     except (pynvml.NVMLError, AttributeError, IndexError) as e:
                         logging.debug(f"GPU monitoring error: {e}")
-                        STATUS["gpu_usage"] = 0.0
-                        STATUS["gpu_temperature"] = 0.0
-                        STATUS["gpu_memory"] = 0.0
             except Exception as e:
                 logging.debug(f"Unexpected GPU monitoring error: {e}")
-                STATUS["gpu_usage"] = 0.0
-                STATUS["gpu_temperature"] = 0.0
-                STATUS["gpu_memory"] = 0.0
-        else:
+        
+        # Update STATUS with lock protection
+        with STATUS_LOCK:
+            STATUS["cpu_usage"] = cpu_percent
+            STATUS["memory_usage"] = memory_percent
+            STATUS["gpu_usage"] = gpu_usage
+            STATUS["gpu_temperature"] = gpu_temperature
+            STATUS["gpu_memory"] = gpu_memory
+    except Exception as e:
+        logging.debug(f"Performance metrics error: {e}")
+        # Update STATUS with lock protection even on error
+        with STATUS_LOCK:
+            STATUS["cpu_usage"] = 0.0
+            STATUS["memory_usage"] = 0.0
             STATUS["gpu_usage"] = 0.0
             STATUS["gpu_temperature"] = 0.0
             STATUS["gpu_memory"] = 0.0
-    except Exception as e:
-        logging.debug(f"Performance metrics error: {e}")
 
 
 # Formatting Functions
@@ -354,6 +357,38 @@ cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5000,http://127.
 socketio = SocketIO(app, cors_allowed_origins=cors_origins)
 
 
+@app.route("/favicon.ico")
+def favicon():
+    """Serve favicon as SVG"""
+    svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<defs>
+<linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" style="stop-color:#1e3c72;stop-opacity:1" />
+<stop offset="100%" style="stop-color:#2a5298;stop-opacity:1" />
+</linearGradient>
+<linearGradient id="btc" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" style="stop-color:#F7931A;stop-opacity:1" />
+<stop offset="100%" style="stop-color:#FFA500;stop-opacity:1" />
+</linearGradient>
+</defs>
+<rect width="100" height="100" rx="20" fill="url(#bg)"/>
+<circle cx="50" cy="50" r="35" fill="url(#btc)" stroke="#fff" stroke-width="2"/>
+<path d="M50 30 L58 42 L50 50 L42 42 Z M50 50 L58 62 L50 70 L42 62 Z" fill="#1a1a1a"/>
+<circle cx="50" cy="50" r="6" fill="#F7931A"/>
+</svg>'''
+    return app.response_class(
+        response=svg_content,
+        mimetype="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=31536000"}
+    )
+
+
+@app.route("/favicon.svg")
+def favicon_svg():
+    """Serve favicon as SVG"""
+    return favicon()
+
+
 @app.route("/")
 def index():
     return render_template_string(INDEX_HTML)
@@ -373,23 +408,93 @@ def export_stats():
 @app.route("/api/stop", methods=["POST"])
 def stop_mining():
     """Stop mining by setting shutdown flag"""
-    global _miner_state
-    if _miner_state:
+    from flask import request
+    
+    # CSRF protection
+    if not _check_csrf_protection(request):
+        return jsonify({
+            "success": False,
+            "error": "CSRF validation failed",
+            "message": "Request origin not allowed. CSRF protection enabled."
+        }), 403
+    
+    # Rate limiting
+    client_ip = request.remote_addr or "unknown"
+    if not _check_rate_limit(client_ip):
+        return jsonify({
+            "success": False,
+            "error": "Rate limit exceeded",
+            "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds."
+        }), 429
+    
+    try:
+        global _miner_state
+        if not _miner_state:
+            return jsonify({
+                "success": False,
+                "error": "MinerStateNotAvailable",
+                "message": "Miner state not available. Miner may not be running."
+            }), 503
+        
         _miner_state.shutdown_flag = True
         update_status("running", False)
-        return {"success": True, "message": "Mining stopped"}
-    return {"success": False, "message": "Miner state not available"}, 500
+        return jsonify({
+            "success": True,
+            "message": "Mining stopped"
+        })
+    except Exception as e:
+        logging.error(f"Error stopping mining: {e}")
+        return jsonify({
+            "success": False,
+            "error": "InternalError",
+            "message": f"Failed to stop mining: {str(e)}"
+        }), 500
 
 
 @app.route("/api/start", methods=["POST"])
 def start_mining():
     """Resume mining by clearing shutdown flag (Note: Requires miner restart to actually resume)"""
-    global _miner_state
-    if _miner_state:
+    from flask import request
+    
+    # CSRF protection
+    if not _check_csrf_protection(request):
+        return jsonify({
+            "success": False,
+            "error": "CSRF validation failed",
+            "message": "Request origin not allowed. CSRF protection enabled."
+        }), 403
+    
+    # Rate limiting
+    client_ip = request.remote_addr or "unknown"
+    if not _check_rate_limit(client_ip):
+        return jsonify({
+            "success": False,
+            "error": "Rate limit exceeded",
+            "message": f"Too many requests. Maximum {_api_rate_limit_max_requests} requests per {_api_rate_limit_window} seconds."
+        }), 429
+    
+    try:
+        global _miner_state
+        if not _miner_state:
+            return jsonify({
+                "success": False,
+                "error": "MinerStateNotAvailable",
+                "message": "Miner state not available. Miner may not be running."
+            }), 503
+        
         _miner_state.shutdown_flag = False
         update_status("running", True)
-        return {"success": True, "message": "Mining resumed (may require restart)"}
-    return {"success": False, "message": "Miner state not available"}, 500
+        return jsonify({
+            "success": True,
+            "message": "Mining resumed (may require restart)"
+        })
+    except Exception as e:
+        logging.error(f"Error starting mining: {e}")
+        return jsonify({
+            "success": False,
+            "error": "InternalError",
+            "message": f"Failed to start mining: {str(e)}"
+        }), 500
 
 
 @socketio.on("connect")
@@ -432,6 +537,71 @@ def start_web_server(host: str = "0.0.0.0", port: int = 5000):
 # Global reference to miner state for controlling mining
 _miner_state = None
 
+# Rate limiting for API endpoints
+_api_rate_limit = {}
+_api_rate_limit_lock = threading.Lock()
+_api_rate_limit_window = 60  # seconds
+_api_rate_limit_max_requests = 10  # max requests per window
+
+
+def _check_rate_limit(client_ip: str) -> bool:
+    """Check if client has exceeded rate limit"""
+    with _api_rate_limit_lock:
+        now = time.time()
+        if client_ip not in _api_rate_limit:
+            _api_rate_limit[client_ip] = []
+        
+        # Remove old requests outside the window
+        _api_rate_limit[client_ip] = [
+            req_time for req_time in _api_rate_limit[client_ip]
+            if now - req_time < _api_rate_limit_window
+        ]
+        
+        # Check if limit exceeded
+        if len(_api_rate_limit[client_ip]) >= _api_rate_limit_max_requests:
+            return False
+        
+        # Add current request
+        _api_rate_limit[client_ip].append(now)
+        return True
+
+
+def _check_csrf_protection(request) -> bool:
+    """Check CSRF protection via Origin/Referer header validation"""
+    # Get allowed origins from CORS configuration (use same as CORS settings)
+    allowed_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000").split(",")
+    
+    # Get Origin or Referer header
+    origin = request.headers.get('Origin')
+    referer = request.headers.get('Referer')
+    
+    # If no Origin/Referer, allow only if from same origin (local requests)
+    if not origin and not referer:
+        # Allow requests without Origin/Referer for localhost/127.0.0.1
+        # This is acceptable for a local mining application
+        return True
+    
+    # Check Origin header first (more reliable)
+    if origin:
+        # Remove protocol and path, keep only origin
+        origin_base = origin.split('://')[1].split('/')[0] if '://' in origin else origin.split('/')[0]
+        for allowed in allowed_origins:
+            allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
+            if origin_base == allowed_base or origin_base in allowed_base or allowed_base in origin_base:
+                return True
+    
+    # Fallback to Referer header
+    if referer:
+        referer_base = referer.split('://')[1].split('/')[0] if '://' in referer else referer.split('/')[0]
+        for allowed in allowed_origins:
+            allowed_base = allowed.split('://')[1].split('/')[0] if '://' in allowed else allowed.split('/')[0]
+            if referer_base == allowed_base or referer_base in allowed_base or allowed_base in referer_base:
+                return True
+    
+    # If Origin/Referer doesn't match allowed origins, reject
+    return False
+
+
 def set_miner_state(miner_state):
     """Set the miner state reference for controlling mining"""
     global _miner_state
@@ -449,8 +619,9 @@ INDEX_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SatoshiRig - Status Dashboard</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%231e3c72;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%232a5298;stop-opacity:1' /%3E%3C/linearGradient%3E%3ClinearGradient id='btc' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23F7931A;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%23FFA500;stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='20' fill='url(%23bg)'/%3E%3Ccircle cx='50' cy='50' r='35' fill='url(%23btc)' stroke='%23fff' stroke-width='2'/%3E%3Cpath d='M50 30 L58 42 L50 50 L42 42 Z M50 50 L58 62 L50 70 L42 62 Z' fill='%231a1a1a'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%23F7931A'/%3E%3C/svg%3E">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%231e3c72;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%232a5298;stop-opacity:1' /%3E%3C/linearGradient%3E%3ClinearGradient id='btc' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23F7931A;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%23FFA500;stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='20' fill='url(%23bg)'/%3E%3Ccircle cx='50' cy='50' r='35' fill='url(%23btc)' stroke='%23fff' stroke-width='2'/%3E%3Cpath d='M50 30 L58 42 L50 50 L42 42 Z M50 50 L58 62 L50 70 L42 62 Z' fill='%231a1a1a'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%23F7931A'/%3E%3C/svg%3E">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/favicon.svg">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }

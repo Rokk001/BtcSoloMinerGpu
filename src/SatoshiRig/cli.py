@@ -49,6 +49,15 @@ def main() :
     if not wallet :
         print("Missing wallet address. Provide with --wallet <ADDRESS> or WALLET_ADDRESS env var.")
         sys.exit(2)
+    
+    # Validate wallet address format
+    wallet = wallet.strip()
+    if len(wallet) < 26 or len(wallet) > 62:
+        print(f"Error: Invalid wallet address length. Bitcoin addresses are 26-62 characters long.")
+        sys.exit(2)
+    if not all(c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" for c in wallet):
+        print(f"Error: Invalid wallet address format. Address contains invalid characters.")
+        sys.exit(2)
 
     logging.basicConfig(
         level = getattr(logging , cfg.get("logging" , {}).get("level" , "INFO").upper() , logging.INFO) ,

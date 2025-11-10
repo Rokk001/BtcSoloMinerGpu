@@ -1,6 +1,7 @@
 import json
-import socket
 import logging
+import socket
+import time
 from typing import Tuple , List
 
 
@@ -13,16 +14,36 @@ class PoolClient :
         self.logger = logging.getLogger("SatoshiRig.pool_client")
 
     def connect(self) :
-        try:
-            self.sock = socket.socket(socket.AF_INET , socket.SOCK_STREAM)
-            self.sock.settimeout(self.timeout)
-            self.sock.connect((self.host , self.port))
-        except (socket.error, OSError, ConnectionError) as e:
-            self.logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
-            raise
+        max_retries = 3
+        retry_delay = 2  # seconds
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                self.sock = socket.socket(socket.AF_INET , socket.SOCK_STREAM)
+                self.sock.settimeout(self.timeout)
+                self.sock.connect((self.host , self.port))
+                return  # Success
+            except (socket.error, OSError, ConnectionError) as e:
+                last_error = e
+                if self.sock:
+                    try:
+                        self.sock.close()
+                    except:
+                        pass
+                    self.sock = None
+                
+                if attempt < max_retries - 1:
+                    self.logger.warning(f"Failed to connect to {self.host}:{self.port} (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                else:
+                    self.logger.error(f"Failed to connect to {self.host}:{self.port} after {max_retries} attempts: {e}")
+        
+        raise last_error
 
     def subscribe(self) -> Tuple[str , str , int] :
-        assert self.sock is not None
+        if self.sock is None:
+            raise RuntimeError("Socket not connected. Call connect() first.")
         try:
             self.sock.sendall(b'{"id": 1, "method": "mining.subscribe", "params": []}\n')
             data = self.sock.recv(1024)
@@ -37,7 +58,8 @@ class PoolClient :
             raise
 
     def authorize(self , wallet_address: str) :
-        assert self.sock is not None
+        if self.sock is None:
+            raise RuntimeError("Socket not connected. Call connect() first.")
         try:
             authorize_msg = json.dumps({
                 "params": [wallet_address , "password"] ,
@@ -50,7 +72,8 @@ class PoolClient :
             raise
 
     def read_notify(self) -> list:
-        assert self.sock is not None
+        if self.sock is None:
+            raise RuntimeError("Socket not connected. Call connect() first.")
         # Robust line-buffered read with simple framing by newlines
         # Keep reading until we see at least one mining.notify message
         # and we have consumed a line ending.
@@ -91,7 +114,8 @@ class PoolClient :
         return responses
 
     def submit(self , wallet_address: str , job_id: str , extranonce2: str , ntime: str , nonce_hex: str) -> bytes:
-        assert self.sock is not None
+        if self.sock is None:
+            raise RuntimeError("Socket not connected. Call connect() first.")
         try:
             payload = json.dumps({
                 "params": [wallet_address , job_id , extranonce2 , ntime , nonce_hex] ,
@@ -106,5 +130,24 @@ class PoolClient :
         except (socket.error, OSError, ConnectionError) as e:
             self.logger.error(f"Submit failed: {e}")
             raise
+
+    def close(self):
+        """Close the socket connection"""
+        if self.sock:
+            try:
+                self.sock.close()
+            except (socket.error, OSError) as e:
+                self.logger.debug(f"Error closing socket: {e}")
+            finally:
+                self.sock = None
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures socket is closed"""
+        self.close()
+        return False
 
 

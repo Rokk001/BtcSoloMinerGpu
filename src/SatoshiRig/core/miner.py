@@ -63,20 +63,48 @@ class Miner :
     def _get_current_block_height(self) -> int :
         net = self.cfg["network"]
         source = (net.get("source") or "web").lower()
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
         if source == "local" :
             # Bitcoin Core JSON-RPC: getblockcount
             payload = {"jsonrpc": "1.0" , "id": "satoshirig" , "method": "getblockcount" , "params": []}
             auth = None
             if net.get("rpc_user") or net.get("rpc_password") :
                 auth = (net.get("rpc_user" , "") , net.get("rpc_password" , ""))
-            r = requests.post(net.get("rpc_url") , json = payload , auth = auth , timeout = net.get("request_timeout_secs" , 15))
-            r.raise_for_status()
-            data = r.json()
-            return int(data["result"])  # returns block count (height)
+            
+            last_error = None
+            for attempt in range(max_retries):
+                try:
+                    r = requests.post(net.get("rpc_url") , json = payload , auth = auth , timeout = net.get("request_timeout_secs" , 15))
+                    r.raise_for_status()
+                    data = r.json()
+                    return int(data["result"])  # returns block count (height)
+                except (requests.RequestException, KeyError, ValueError, TypeError) as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        self.log.warning(f"Failed to get block height from RPC (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
+                        time.sleep(retry_delay)
+                    else:
+                        self.log.error(f"Failed to get block height from RPC after {max_retries} attempts: {e}")
+                        raise
+            raise last_error
         else :
-            r = requests.get(net["latest_block_url"] , timeout = net["request_timeout_secs"]) 
-            r.raise_for_status()
-            return int(r.json()['height'])
+            last_error = None
+            for attempt in range(max_retries):
+                try:
+                    r = requests.get(net["latest_block_url"] , timeout = net.get("request_timeout_secs")) 
+                    r.raise_for_status()
+                    return int(r.json()['height'])
+                except (requests.RequestException, KeyError, ValueError, TypeError) as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        self.log.warning(f"Failed to get block height from web API (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
+                        time.sleep(retry_delay)
+                    else:
+                        self.log.error(f"Failed to get block height from web API after {max_retries} attempts: {e}")
+                        raise
+            raise last_error
 
     def _build_block_header(self , prev_hash , merkle_root , ntime , nbits , nonce_hex) :
         return (

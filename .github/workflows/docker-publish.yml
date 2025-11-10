@@ -172,7 +172,7 @@ jobs:
             echo "Note: This is not a fatal error. The Docker image was built and pushed successfully."
             echo "You may need to manually set the package visibility in GitHub Settings > Packages."
           fi
-          
+
           # Don't fail the workflow if we couldn't set it to public
           # The image was built and pushed successfully, which is the main goal
           exit 0

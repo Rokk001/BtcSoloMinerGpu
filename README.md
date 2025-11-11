@@ -56,6 +56,7 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 - 📈 **Performance Analytics**: Historical charts and trend analysis
 - 🧠 **Mining Intelligence**: Estimated time to block, probability calculations, profitability estimates
 - ⚙️ **Configuration UI**: Web-based settings for all mining parameters (pool, network, compute, database)
+- 🎛️ **GPU Utilization Control**: Configure GPU usage percentage (1-100%) to allow other GPU tasks to run simultaneously
 - 🎨 **Modern UI**: Tabbed interface with dark/light theme support
 - 📱 **Responsive Design**: Works on desktop and mobile devices
 
@@ -145,6 +146,7 @@ All configuration can be done via environment variables:
 | `CONFIG_FILE` | No | `./config/config.toml` | Path to TOML config file |
 | `COMPUTE_BACKEND` | No | `cpu` | Compute backend: `cpu`, `cuda`, or `opencl` |
 | `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
+| `GPU_UTILIZATION_PERCENT` | No | `100` | GPU utilization percentage (1-100%) for time-slicing support |
 | `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
@@ -344,7 +346,8 @@ docker run -d \
 - **Automatic Fallback**: The miner automatically falls back to CPU if GPU initialization fails
 - **Batch Processing**: GPU mining uses parallel batch hashing (1024 nonces per iteration)
 - **Sequential Nonce Counter**: Complete coverage of the 32-bit nonce space
-- **Performance**: Current implementation uses parallel CPU threads as a placeholder for optimized GPU kernels
+- **GPU Utilization Control**: Configure GPU usage percentage (1-100%) via web UI or config to allow other GPU tasks (e.g., video transcoding) to run simultaneously
+- **Time-Slicing**: When GPU utilization is set below 100%, the miner automatically pauses between batches to free up GPU resources
 
 ---
 
@@ -390,7 +393,7 @@ Once running, access the dashboard at:
 #### Settings Tab
 - **Pool Configuration**: Host and port settings
 - **Network Configuration**: Block source (web/local), RPC settings
-- **Compute Configuration**: Backend (CPU/CUDA/OpenCL), GPU device, batch size, workers
+- **Compute Configuration**: Backend (CPU/CUDA/OpenCL), GPU device, batch size, workers, GPU utilization percentage
 - **Mining Toggles**: Enable/disable CPU and GPU mining independently
 - **Database Configuration**: Retention period in days
 

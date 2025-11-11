@@ -68,12 +68,17 @@ def main() :
 
     signal(SIGINT , _handle_sigint)
 
+    pool = PoolClient(cfg["pool"]["host"] , int(cfg["pool"]["port"]))
+    miner = Miner(wallet , cfg , pool , STATE , logger)
+    
     if WEB_AVAILABLE and not args.no_web :
         web_port = args.web_port or int(os.environ.get("WEB_PORT" , "5000"))
-        from .web.server import update_status , set_miner_state , set_config
+        from .web.server import update_status , set_miner_state , set_config , set_miner
         update_status("wallet_address" , wallet)
         # Set miner state reference for web API control
         set_miner_state(STATE)
+        # Set miner instance reference for dynamic config updates
+        set_miner(miner)
         # Set configuration reference for web UI (sanitized - no sensitive data)
         set_config(cfg)
         # Determine blockchain explorer URL from config
@@ -90,8 +95,6 @@ def main() :
         web_thread.start()
         logger.info("Web dashboard started on port %s" , web_port)
 
-    pool = PoolClient(cfg["pool"]["host"] , int(cfg["pool"]["port"]))
-    miner = Miner(wallet , cfg , pool , STATE , logger)
     miner.start()
 
 

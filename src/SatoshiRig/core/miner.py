@@ -36,29 +36,72 @@ class Miner :
         self.gpu_nonce_counter = 0  # Counter for sequential nonce generation in GPU mode
         
         # Initialize GPU miner if configured
+        self._initialize_gpu_miner()
+    
+    def _initialize_gpu_miner(self):
+        """Initialize GPU miner based on configuration"""
         compute_backend = self.cfg.get("compute" , {}).get("backend" , "cpu")
+        gpu_mining_enabled = self.cfg.get("compute" , {}).get("gpu_mining_enabled" , False)
         gpu_device = self.cfg.get("compute" , {}).get("gpu_device" , 0)
         batch_size = self.cfg.get("compute" , {}).get("batch_size" , 256)
         max_workers = self.cfg.get("compute" , {}).get("max_workers" , 8)
         
-        if compute_backend == "cuda":
+        # Cleanup existing GPU miner if any
+        if self.gpu_miner:
             try:
-                from .gpu_compute import create_gpu_miner
-                self.gpu_miner = create_gpu_miner("cuda", device_id=gpu_device, logger=self.log, batch_size=batch_size, max_workers=max_workers)
-                self.log.info(f"CUDA GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})")
+                self.gpu_miner.cleanup()
             except Exception as e:
-                self.log.error(f"Failed to initialize CUDA miner: {e}")
-                self.log.warning("Falling back to CPU mining")
-                self.gpu_miner = None
-        elif compute_backend == "opencl":
-            try:
-                from .gpu_compute import create_gpu_miner
-                self.gpu_miner = create_gpu_miner("opencl", device_id=gpu_device, logger=self.log, batch_size=batch_size, max_workers=max_workers)
-                self.log.info(f"OpenCL GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})")
-            except Exception as e:
-                self.log.error(f"Failed to initialize OpenCL miner: {e}")
-                self.log.warning("Falling back to CPU mining")
-                self.gpu_miner = None
+                self.log.debug(f"Error cleaning up GPU miner: {e}")
+            self.gpu_miner = None
+        
+        # Only initialize GPU miner if gpu_mining_enabled is True and backend is cuda/opencl
+        if gpu_mining_enabled and compute_backend in ["cuda", "opencl"]:
+            if compute_backend == "cuda":
+                try:
+                    from .gpu_compute import create_gpu_miner
+                    self.gpu_miner = create_gpu_miner("cuda", device_id=gpu_device, logger=self.log, batch_size=batch_size, max_workers=max_workers)
+                    self.log.info(f"CUDA GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})")
+                except Exception as e:
+                    self.log.error(f"Failed to initialize CUDA miner: {e}")
+                    self.log.warning("Falling back to CPU mining")
+                    self.gpu_miner = None
+            elif compute_backend == "opencl":
+                try:
+                    from .gpu_compute import create_gpu_miner
+                    self.gpu_miner = create_gpu_miner("opencl", device_id=gpu_device, logger=self.log, batch_size=batch_size, max_workers=max_workers)
+                    self.log.info(f"OpenCL GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})")
+                except Exception as e:
+                    self.log.error(f"Failed to initialize OpenCL miner: {e}")
+                    self.log.warning("Falling back to CPU mining")
+                    self.gpu_miner = None
+        else:
+            self.log.debug(f"GPU mining not enabled (gpu_mining_enabled={gpu_mining_enabled}, backend={compute_backend})")
+
+    def update_config(self, new_config: dict):
+        """Update miner configuration at runtime"""
+        # Deep merge config
+        def deep_merge(base, update):
+            for key, value in update.items():
+                if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                    deep_merge(base[key], value)
+                else:
+                    base[key] = value
+        
+        # Store old backend to detect changes
+        old_backend = self.cfg.get("compute", {}).get("backend", "cpu")
+        old_gpu_enabled = self.cfg.get("compute", {}).get("gpu_mining_enabled", False)
+        
+        # Update config
+        deep_merge(self.cfg, new_config)
+        
+        # Check if GPU configuration changed
+        new_backend = self.cfg.get("compute", {}).get("backend", "cpu")
+        new_gpu_enabled = self.cfg.get("compute", {}).get("gpu_mining_enabled", False)
+        
+        # Reinitialize GPU miner if backend or gpu_mining_enabled changed
+        if old_backend != new_backend or old_gpu_enabled != new_gpu_enabled:
+            self.log.info(f"GPU configuration changed (backend: {old_backend} -> {new_backend}, gpu_enabled: {old_gpu_enabled} -> {new_gpu_enabled})")
+            self._initialize_gpu_miner()
 
     def _get_current_block_height(self) -> int :
         net = self.cfg["network"]
@@ -194,8 +237,12 @@ class Miner :
                     update_status("job_id" , self.state.job_id)
                 return self._mine_loop()
 
-            # Use GPU miner if available, otherwise use CPU
-            if self.gpu_miner:
+            # Check CPU/GPU mining flags
+            cpu_mining_enabled = self.cfg.get("compute" , {}).get("cpu_mining_enabled" , True)
+            gpu_mining_enabled = self.cfg.get("compute" , {}).get("gpu_mining_enabled" , False)
+            
+            # Use GPU miner if enabled and available, otherwise use CPU
+            if gpu_mining_enabled and self.gpu_miner:
                 # GPU mining: test multiple nonces in parallel batch
                 block_header_base = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , "00000000")
                 block_header_hex = block_header_base
@@ -205,7 +252,10 @@ class Miner :
                 
                 # Try GPU batch hashing (use sequential nonce counter for better coverage)
                 try:
+                    batch_start_time = time.time()
                     result = self.gpu_miner.hash_block_header(block_header_hex, num_nonces=num_nonces_per_batch, start_nonce=self.gpu_nonce_counter)
+                    batch_duration = time.time() - batch_start_time
+                    
                     if result:
                         hash_hex, best_nonce = result
                         nonce_hex = f"{best_nonce:08x}"
@@ -215,6 +265,16 @@ class Miner :
                         update_status("total_hashes" , self.total_hash_count)
                         # Increment nonce counter for next batch
                         self.gpu_nonce_counter = (best_nonce + 1) % (2**32)
+                        
+                        # Time-Slicing: Pause based on GPU utilization percentage
+                        gpu_utilization_percent = self.cfg.get("compute", {}).get("gpu_utilization_percent", 100)
+                        if gpu_utilization_percent < 100 and batch_duration > 0:
+                            # Calculate pause time: if 20% utilization, pause 80% of the time
+                            # Formula: pause_time = batch_duration * (100 - utilization) / utilization
+                            pause_ratio = (100 - gpu_utilization_percent) / gpu_utilization_percent
+                            pause_time = batch_duration * pause_ratio
+                            if pause_time > 0:
+                                time.sleep(pause_time)
                     else:
                         # GPU returned None - fallback to CPU for this iteration
                         self.log.warning("GPU miner returned None, falling back to CPU")
@@ -237,7 +297,7 @@ class Miner :
                     self.total_hash_count += 1
                     self.gpu_nonce_counter = (self.gpu_nonce_counter + 1) % (2**32)
                     update_status("total_hashes" , self.total_hash_count)
-            else:
+            elif cpu_mining_enabled:
                 # CPU mining (original implementation)
                 nonce_hex = hex(random.getrandbits(32))[2 :].zfill(8)
                 block_header = self._build_block_header(self.state.prev_hash , merkle_root , self.state.ntime , self.state.nbits , nonce_hex)
@@ -246,6 +306,11 @@ class Miner :
                 hash_count += 1
                 self.total_hash_count += 1
                 update_status("total_hashes" , self.total_hash_count)
+            else:
+                # Both CPU and GPU mining disabled - pause briefly
+                self.log.warning("Both CPU and GPU mining are disabled. Pausing...")
+                time.sleep(0.1)
+                continue
 
             if hash_hex.startswith(prefix_zeros) :
                 self.log.debug('Candidate hash %s at height %s' , hash_hex , current_height + 1)

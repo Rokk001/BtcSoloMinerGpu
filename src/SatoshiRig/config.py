@@ -1,5 +1,6 @@
 import os
 import tomllib
+import tomli_w
 from typing import Any, Dict
 
 
@@ -69,6 +70,12 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         cfg["compute"]["max_workers"] = int(cfg["compute"].get("max_workers", os.environ.get("GPU_MAX_WORKERS", "8")))
     except Exception:
         cfg["compute"]["max_workers"] = 8
+    try:
+        gpu_util = int(cfg["compute"].get("gpu_utilization_percent", os.environ.get("GPU_UTILIZATION_PERCENT", "100")))
+        # Clamp between 1 and 100
+        cfg["compute"]["gpu_utilization_percent"] = max(1, min(100, gpu_util))
+    except Exception:
+        cfg["compute"]["gpu_utilization_percent"] = 100
 
     return cfg
 
@@ -103,5 +110,35 @@ def load_config() :
         compute["gpu_device"] = int(os.environ.get("GPU_DEVICE" , "0"))
     cfg["compute"] = compute
     return _validate_config(cfg)
+
+
+def save_config(cfg: Dict[str, Any], config_path: str = None) -> str:
+    """
+    Save configuration to TOML file
+    
+    Args:
+        cfg: Configuration dictionary to save
+        config_path: Optional path to config file. If None, uses first existing path or default.
+    
+    Returns:
+        Path to saved config file
+    """
+    if config_path is None:
+        config_path = _first_existing_path(DEFAULT_CONFIG_PATHS)
+        if config_path is None:
+            # Use default path
+            config_path = os.path.join(os.getcwd(), "config", "config.toml")
+    
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(os.path.abspath(config_path)), exist_ok=True)
+    
+    # Validate config before saving
+    validated_cfg = _validate_config(cfg.copy())
+    
+    # Write to file
+    with open(config_path, "wb") as f:
+        tomli_w.dump(validated_cfg, f)
+    
+    return config_path
 
 

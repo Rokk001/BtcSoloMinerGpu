@@ -28,6 +28,15 @@ try:
 except ImportError:
     OPENCL_AVAILABLE = False
 
+# Check CUDA availability
+try:
+    import pycuda.driver as cuda
+    CUDA_AVAILABLE = True
+except ImportError:
+    CUDA_AVAILABLE = False
+except Exception:
+    CUDA_AVAILABLE = False
+
 
 STATUS_LOCK = threading.Lock()
 STATUS: Dict = {
@@ -548,10 +557,126 @@ def save_config_api():
         config = data["config"]
         
         # Validate configuration
-        # TODO: Add validation logic here
+        validation_errors = []
         
-        # Save to database or config file
-        # TODO: Implement persistent storage
+        # Validate wallet address
+        if "wallet" in config and "address" in config["wallet"]:
+            wallet_address = config["wallet"]["address"].strip()
+            if wallet_address:
+                if len(wallet_address) < 26 or len(wallet_address) > 62:
+                    validation_errors.append("Invalid wallet address length (must be 26-62 characters)")
+                if not all(c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" for c in wallet_address):
+                    validation_errors.append("Invalid wallet address format (contains invalid characters)")
+        
+        # Validate pool configuration
+        if "pool" in config:
+            if "host" in config["pool"]:
+                host = config["pool"]["host"].strip()
+                if not host:
+                    validation_errors.append("Pool host cannot be empty")
+            if "port" in config["pool"]:
+                try:
+                    port = int(config["pool"]["port"])
+                    if port < 1 or port > 65535:
+                        validation_errors.append("Pool port must be between 1 and 65535")
+                except (ValueError, TypeError):
+                    validation_errors.append("Pool port must be a valid number")
+        
+        # Validate network configuration
+        if "network" in config:
+            if "source" in config["network"]:
+                source = config["network"]["source"]
+                if source not in ["web", "local"]:
+                    validation_errors.append("Network source must be 'web' or 'local'")
+            if "request_timeout_secs" in config["network"]:
+                try:
+                    timeout = int(config["network"]["request_timeout_secs"])
+                    if timeout < 1 or timeout > 300:
+                        validation_errors.append("Request timeout must be between 1 and 300 seconds")
+                except (ValueError, TypeError):
+                    validation_errors.append("Request timeout must be a valid number")
+        
+        # Validate compute configuration
+        if "compute" in config:
+            if "backend" in config["compute"]:
+                backend = config["compute"]["backend"]
+                if backend not in ["cpu", "cuda", "opencl"]:
+                    validation_errors.append("Compute backend must be 'cpu', 'cuda', or 'opencl'")
+            if "gpu_device" in config["compute"]:
+                try:
+                    gpu_device = int(config["compute"]["gpu_device"])
+                    if gpu_device < 0:
+                        validation_errors.append("GPU device must be >= 0")
+                except (ValueError, TypeError):
+                    validation_errors.append("GPU device must be a valid number")
+            if "batch_size" in config["compute"]:
+                try:
+                    batch_size = int(config["compute"]["batch_size"])
+                    if batch_size < 1 or batch_size > 100000:
+                        validation_errors.append("Batch size must be between 1 and 100000")
+                except (ValueError, TypeError):
+                    validation_errors.append("Batch size must be a valid number")
+            if "max_workers" in config["compute"]:
+                try:
+                    max_workers = int(config["compute"]["max_workers"])
+                    if max_workers < 1 or max_workers > 128:
+                        validation_errors.append("Max workers must be between 1 and 128")
+                except (ValueError, TypeError):
+                    validation_errors.append("Max workers must be a valid number")
+            if "gpu_utilization_percent" in config["compute"]:
+                try:
+                    gpu_util = int(config["compute"]["gpu_utilization_percent"])
+                    if gpu_util < 1 or gpu_util > 100:
+                        validation_errors.append("GPU utilization must be between 1 and 100 percent")
+                except (ValueError, TypeError):
+                    validation_errors.append("GPU utilization must be a valid number")
+        
+        # Validate database configuration
+        if "database" in config and "retention_days" in config["database"]:
+            try:
+                retention = int(config["database"]["retention_days"])
+                if retention < 1 or retention > 3650:
+                    validation_errors.append("Database retention must be between 1 and 3650 days")
+            except (ValueError, TypeError):
+                validation_errors.append("Database retention must be a valid number")
+        
+        if validation_errors:
+            return jsonify({
+                "success": False,
+                "error": "Validation failed",
+                "errors": validation_errors
+            }), 400
+        
+        # Save to config file
+        try:
+            from ..config import save_config as save_config_file
+            # Merge with existing config to preserve sensitive data
+            existing_config = get_config_for_ui()
+            # Deep merge: update existing config with new values
+            def deep_merge(base, update):
+                for key, value in update.items():
+                    if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                        deep_merge(base[key], value)
+                    else:
+                        base[key] = value
+            
+            # Create full config for saving (merge with existing)
+            full_config = existing_config.copy()
+            deep_merge(full_config, config)
+            
+            # Get config file path from environment or use default
+            config_path = os.environ.get("CONFIG_FILE")
+            if not config_path:
+                config_path = os.path.join(os.getcwd(), "config", "config.toml")
+            
+            # Save to file
+            saved_path = save_config_file(full_config, config_path)
+            logger = logging.getLogger("SatoshiRig.web")
+            logger.info(f"Configuration saved to {saved_path}")
+        except Exception as e:
+            logger = logging.getLogger("SatoshiRig.web")
+            logger.error(f"Error saving config to file: {e}")
+            # Continue anyway - at least update in-memory config
         
         # Update in-memory config
         set_config(config)
@@ -591,7 +716,18 @@ def toggle_cpu_mining():
         config["compute"]["cpu_mining_enabled"] = enabled
         set_config(config)
         
-        # TODO: Apply to running miner
+        # Apply to running miner
+        global _miner
+        if _miner:
+            try:
+                _miner.update_config({"compute": config["compute"]})
+            except Exception as e:
+                logger = logging.getLogger("SatoshiRig.web")
+                logger.error(f"Error updating miner config: {e}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to apply config to miner: {str(e)}"
+                }), 500
         
         return jsonify({
             "success": True,
@@ -623,13 +759,42 @@ def toggle_gpu_mining():
         
         config = get_config_for_ui()
         config["compute"]["gpu_mining_enabled"] = enabled
+        
+        # Update backend based on GPU availability
+        if enabled:
+            # Check available GPU backends
+            if CUDA_AVAILABLE:
+                config["compute"]["backend"] = "cuda"
+            elif OPENCL_AVAILABLE:
+                config["compute"]["backend"] = "opencl"
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "No GPU backend available. Install PyCUDA or PyOpenCL."
+                }), 400
+        else:
+            # Disable GPU mining - switch to CPU
+            config["compute"]["backend"] = "cpu"
+        
         set_config(config)
         
-        # TODO: Apply to running miner
+        # Apply to running miner
+        global _miner
+        if _miner:
+            try:
+                _miner.update_config({"compute": config["compute"]})
+            except Exception as e:
+                logger = logging.getLogger("SatoshiRig.web")
+                logger.error(f"Error updating miner config: {e}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to apply config to miner: {str(e)}"
+                }), 500
         
         return jsonify({
             "success": True,
-            "gpu_mining_enabled": enabled
+            "gpu_mining_enabled": enabled,
+            "backend": config["compute"]["backend"]
         }), 200
     except Exception as e:
         logger = logging.getLogger("SatoshiRig.web")
@@ -793,11 +958,20 @@ def set_miner_state(miner_state):
     _miner_state = miner_state
 
 
+def set_miner(miner):
+    """Set the miner instance reference for dynamic config updates"""
+    global _miner
+    _miner = miner
+
+
 def set_config(config: dict):
     """Set the configuration reference for web UI (sanitized - no sensitive data)"""
     global _config
     # Create sanitized copy without sensitive data
     sanitized = {
+        "wallet": {
+            "address": ""  # Empty - user must enter
+        },
         "pool": {
             "host": config.get("pool", {}).get("host", "solo.ckpool.org"),
             "port": config.get("pool", {}).get("port", 3333)
@@ -824,6 +998,7 @@ def set_config(config: dict):
             "gpu_device": config.get("compute", {}).get("gpu_device", 0),
             "batch_size": config.get("compute", {}).get("batch_size", 256),
             "max_workers": config.get("compute", {}).get("max_workers", 8),
+            "gpu_utilization_percent": config.get("compute", {}).get("gpu_utilization_percent", 100),
             "cpu_mining_enabled": True,  # Default: enabled
             "gpu_mining_enabled": config.get("compute", {}).get("backend") in ["cuda", "opencl"]  # Based on backend
         },
@@ -840,6 +1015,7 @@ def get_config_for_ui() -> dict:
     if _config is None:
         # Return defaults if not set
         return {
+            "wallet": {"address": ""},
             "pool": {"host": "solo.ckpool.org", "port": 3333},
             "network": {
                 "source": "web",
@@ -860,6 +1036,7 @@ def get_config_for_ui() -> dict:
                 "gpu_device": 0,
                 "batch_size": 256,
                 "max_workers": 8,
+                "gpu_utilization_percent": 100,
                 "cpu_mining_enabled": True,
                 "gpu_mining_enabled": False
             },
@@ -869,7 +1046,7 @@ def get_config_for_ui() -> dict:
 
 
 # Export functions for use by miner
-__all__ = ["start_web_server", "update_status", "get_status", "add_share", "update_pool_status", "set_miner_state", "set_config", "get_config_for_ui"]
+__all__ = ["start_web_server", "update_status", "get_status", "add_share", "update_pool_status", "set_miner_state", "set_miner", "set_config", "get_config_for_ui"]
 
 
 INDEX_HTML = """
@@ -884,203 +1061,500 @@ INDEX_HTML = """
     <link rel="apple-touch-icon" href="/favicon.svg">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-            --bg-primary: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            --bg-secondary: rgba(255, 255, 255, 0.1);
-            --text-primary: #fff;
-            --text-secondary: #ccc;
-            --accent: #4ade80;
-            --error: #f87171;
-            --card-bg: rgba(255, 255, 255, 0.1);
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
         }
+        
+        :root {
+            --bg-gradient-start: #0f0c29;
+            --bg-gradient-mid: #302b63;
+            --bg-gradient-end: #24243e;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text-primary: #ffffff;
+            --text-secondary: #b8b8d4;
+            --accent-primary: #00d4ff;
+            --accent-secondary: #4ade80;
+            --accent-danger: #ff6b6b;
+            --accent-warning: #ffd93d;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+            --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+        
+        /* Light Theme Variables */
         body.light-theme {
-            --bg-primary: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
-            --bg-secondary: rgba(255, 255, 255, 0.9);
+            --bg-gradient-start: #f0f4f8;
+            --bg-gradient-mid: #e2e8f0;
+            --bg-gradient-end: #cbd5e1;
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --card-border: rgba(0, 0, 0, 0.1);
             --text-primary: #1e293b;
             --text-secondary: #64748b;
-            --accent: #10b981;
-            --error: #ef4444;
-            --card-bg: rgba(255, 255, 255, 0.9);
+            --accent-primary: #0ea5e9;
+            --accent-secondary: #10b981;
+            --accent-danger: #ef4444;
+            --accent-warning: #f59e0b;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.15);
+            --shadow-glow: 0 0 20px rgba(14, 165, 233, 0.2);
         }
+        
+        body.light-theme::before {
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(14, 165, 233, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+        }
+        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--bg-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-mid) 50%, var(--bg-gradient-end) 100%);
+            background-attachment: fixed;
             color: var(--text-primary);
-            padding: 20px;
             min-height: 100vh;
-            transition: background 0.3s ease;
+            padding: 1rem;
+            position: relative;
+            overflow-x: hidden;
         }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(74, 222, 128, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Modern Header */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 2rem;
+            padding: 1.5rem 2rem;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-lg);
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 1rem;
         }
+        
         h1 {
-            font-size: 2.5em;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
         }
+        
         .controls {
             display: flex;
-            gap: 10px;
-            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
         }
+        
         .btn {
-            padding: 8px 16px;
+            padding: 0.75rem 1.5rem;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
-            font-size: 0.9em;
+            font-size: 0.875rem;
+            font-weight: 600;
             background: var(--card-bg);
             color: var(--text-primary);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s;
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
         }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+        
         .btn:hover {
-            background: rgba(255, 255, 255, 0.2);
             transform: translateY(-2px);
+            box-shadow: var(--shadow-md), var(--shadow-glow);
+            border-color: var(--accent-primary);
         }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
+        
+        .btn:active {
+            transform: translateY(0);
         }
+        /* Modern Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            padding: 0.5rem;
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .tab {
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 12px;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            white-space: nowrap;
+        }
+        
+        .tab:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            color: var(--text-primary);
+            box-shadow: var(--shadow-sm), 0 0 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        /* Status Cards */
         .status-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
         }
+        
         .status-card {
             background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-            transition: transform 0.3s;
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 1.75rem;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-md);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
         }
+        
+        .status-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            transform: scaleX(0);
+            transition: transform 0.4s;
+        }
+        
         .status-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
+            border-color: var(--accent-primary);
         }
+        
+        .status-card:hover::before {
+            transform: scaleX(1);
+        }
+        
         .status-card h2 {
-            font-size: 1.1em;
-            margin-bottom: 15px;
-            color: #a8d5ff;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .light-theme .status-card h2 {
-            color: #3b82f6;
-        }
-        .status-value {
-            font-size: 2em;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .status-label {
-            font-size: 0.9em;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
             color: var(--text-secondary);
-            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.75rem;
         }
-        .running { color: var(--accent); }
-        .stopped { color: var(--error); }
+        
+        .status-value {
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .status-value.running {
+            color: var(--accent-secondary);
+            -webkit-text-fill-color: var(--accent-secondary);
+        }
+        
+        .status-value.stopped {
+            color: var(--accent-danger);
+            -webkit-text-fill-color: var(--accent-danger);
+        }
+        
+        .status-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+        /* Hash Display */
         .hash-display {
             background: rgba(0, 0, 0, 0.3);
-            border-radius: 8px;
-            padding: 15px;
+            border-radius: 12px;
+            padding: 1rem;
             font-family: 'Courier New', monospace;
-            font-size: 0.9em;
+            font-size: 0.875rem;
             word-break: break-all;
-            margin-top: 10px;
+            margin-top: 1rem;
+            border: 1px solid var(--card-border);
         }
+        /* Chart Container */
         .chart-container {
             background: var(--card-bg);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 25px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-            margin-bottom: 30px;
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-lg);
+            margin-bottom: 2rem;
         }
+        
+        .chart-container h2 {
+            margin-bottom: 1.5rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        /* Settings */
         .settings-section {
             margin-bottom: 2rem;
-            padding: 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
+            padding: 1.5rem;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
+            box-shadow: var(--shadow-md);
         }
+        
         .settings-section h3 {
             margin-top: 0;
-            margin-bottom: 1rem;
-            color: #4a9eff;
+            margin-bottom: 1.5rem;
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+        
         .settings-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
         }
+        
         .setting-item {
             display: flex;
             flex-direction: column;
+            gap: 0.5rem;
         }
+        
         .setting-item label {
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: #ccc;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
+        
         .setting-item input[type="text"],
         .setting-item input[type="number"],
         .setting-item input[type="password"],
         .setting-item select {
-            padding: 0.5rem;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 4px;
-            color: #fff;
-            font-size: 0.9rem;
+            padding: 0.875rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 0.9375rem;
+            font-family: inherit;
+            transition: all 0.3s;
         }
-        .setting-item input[type="checkbox"] {
-            margin-right: 0.5rem;
-            width: 18px;
-            height: 18px;
+        
+        .setting-item input:focus,
+        .setting-item select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+            background: rgba(255, 255, 255, 0.08);
+        }
+        
+        .setting-item select option {
+            background: #1a1a2e;
+            color: var(--text-primary);
+            padding: 0.5rem;
+        }
+        /* Toggle Switch Styles */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        
+        .toggle-label {
+            margin: 0;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 56px;
+            height: 32px;
+            flex-shrink: 0;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid var(--card-border);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 32px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background: var(--text-primary);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .toggle-switch input:checked + .toggle-slider {
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+            background: var(--text-primary);
+        }
+        
+        .toggle-switch:hover .toggle-slider {
+            border-color: var(--accent-primary);
         }
         .settings-actions {
             margin-top: 2rem;
             display: flex;
             gap: 1rem;
         }
-        .btn-primary, .btn-secondary {
-            padding: 0.75rem 1.5rem;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background 0.3s;
+        /* Buttons */
+        .settings-actions {
+            margin-top: 2rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
         }
+        
         .btn-primary {
-            background: #4a9eff;
-            color: #fff;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            color: var(--text-primary);
+            font-weight: 600;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+            box-shadow: var(--shadow-md);
         }
+        
         .btn-primary:hover {
-            background: #3a8eef;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
         }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
         .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--card-border);
+            font-weight: 600;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
         }
+        
         .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-        .chart-container h2 {
-            margin-bottom: 20px;
-            color: #a8d5ff;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .light-theme .chart-container h2 {
-            color: #3b82f6;
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
         }
         .status-card a {
             transition: opacity 0.3s;
@@ -1109,16 +1583,29 @@ INDEX_HTML = """
             border-radius: 4px;
             font-size: 0.9em;
         }
+        /* Pool Status Badge */
         .pool-status {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.85em;
-            font-weight: bold;
-            margin-top: 5px;
+            padding: 0.375rem 0.875rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.5rem;
         }
-        .pool-connected { background: var(--accent); color: #000; }
-        .pool-disconnected { background: var(--error); color: #fff; }
+        
+        .pool-connected {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--accent-secondary);
+            border: 1px solid var(--accent-secondary);
+        }
+        
+        .pool-disconnected {
+            background: rgba(255, 107, 107, 0.2);
+            color: var(--accent-danger);
+            border: 1px solid var(--accent-danger);
+        }
         .stats-table {
             width: 100%;
             border-collapse: collapse;
@@ -1146,67 +1633,116 @@ INDEX_HTML = """
         .share-accepted { border-left: 3px solid var(--accent); }
         .share-rejected { border-left: 3px solid var(--error); }
         
-        /* Tabs Navigation */
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-            flex-wrap: wrap;
-        }
-        .tab {
-            padding: 12px 24px;
-            background: transparent;
-            border: none;
-            border-bottom: 3px solid transparent;
-            color: var(--text-secondary);
-            cursor: pointer;
-            font-size: 1em;
-            font-weight: 500;
-            transition: all 0.3s;
-            position: relative;
-            top: 2px;
-        }
-        .tab:hover {
-            color: var(--text-primary);
-            background: rgba(255, 255, 255, 0.05);
-        }
-        .tab.active {
-            color: var(--accent);
-            border-bottom-color: var(--accent);
-            background: rgba(74, 222, 128, 0.1);
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s ease-in;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
         /* Section Headers */
         .section-header {
-            font-size: 1.5em;
-            margin: 30px 0 20px 0;
-            color: var(--accent);
-            padding-bottom: 10px;
-            border-bottom: 2px solid rgba(74, 222, 128, 0.3);
-        }
-        .section-group {
-            margin-bottom: 40px;
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         
-        @media (max-width: 768px) {
-            h1 { font-size: 2em; }
-            .status-grid { grid-template-columns: 1fr; }
-            .header { flex-direction: column; align-items: flex-start; }
-            .tabs { flex-direction: column; gap: 5px; }
-            .tab { padding: 10px 16px; }
+        .section-group {
+            margin-bottom: 2rem;
         }
+        
+        /* Light Theme Specific Adjustments */
+        body.light-theme .status-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        body.light-theme .status-card:hover {
+            box-shadow: var(--shadow-lg), 0 0 20px rgba(14, 165, 233, 0.2);
+        }
+        
+        body.light-theme .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        body.light-theme .settings-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        body.light-theme .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        body.light-theme .tabs {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        body.light-theme .hash-display {
+            background: rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.1);
+            color: var(--text-primary);
+        }
+        
+        body.light-theme .setting-item input[type="text"],
+        body.light-theme .setting-item input[type="number"],
+        body.light-theme .setting-item input[type="password"],
+        body.light-theme .setting-item select {
+            background: rgba(255, 255, 255, 0.8);
+            border-color: rgba(0, 0, 0, 0.15);
+            color: var(--text-primary);
+        }
+        
+        body.light-theme .setting-item select option {
+            background: #ffffff;
+            color: var(--text-primary);
+        }
+        
+        body.light-theme .toggle-slider {
+            background: rgba(0, 0, 0, 0.1);
+            border-color: rgba(0, 0, 0, 0.2);
+        }
+        
+        body.light-theme .toggle-slider:before {
+            background: #ffffff;
+        }
+        
+        body.light-theme .btn {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(0, 0, 0, 0.1);
+            color: var(--text-primary);
+        }
+        
+        body.light-theme .btn:hover {
+            background: rgba(255, 255, 255, 1);
+            box-shadow: var(--shadow-md), 0 0 20px rgba(14, 165, 233, 0.2);
+        }
+        
+        body.light-theme .pool-connected {
+            background: rgba(16, 185, 129, 0.15);
+            color: #059669;
+            border-color: #10b981;
+        }
+        
+        body.light-theme .pool-disconnected {
+            background: rgba(239, 68, 68, 0.15);
+            color: #dc2626;
+            border-color: #ef4444;
+        }
+        
+        body.light-theme .errors {
+            background: rgba(239, 68, 68, 0.1);
+            border-left-color: var(--accent-danger);
+        }
+        
+        body.light-theme .stats-table td {
+            border-bottom-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        body.light-theme .share-history {
+            background: rgba(0, 0, 0, 0.02);
+        }
+        
     </style>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
@@ -1215,7 +1751,7 @@ INDEX_HTML = """
         <div class="header">
             <h1>SatoshiRig Status Dashboard</h1>
             <div class="controls">
-                <button class="btn" onclick="toggleTheme()">🌓 Theme</button>
+                <button class="btn" onclick="toggleTheme()" id="themeToggle">🌓 Theme</button>
                 <button class="btn" onclick="exportStats()">📥 Export</button>
                 <button class="btn" onclick="toggleMining()">
                     <span id="autoRefreshText">⏸️ Pause</span>
@@ -1471,6 +2007,17 @@ INDEX_HTML = """
             <div class="section-group">
                 <h2 class="section-header">⚙️ Settings</h2>
                 
+                <!-- Wallet Configuration -->
+                <div class="settings-section">
+                    <h3>Wallet Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="wallet-address">Wallet Address:</label>
+                            <input type="text" id="wallet-address" placeholder="Enter Bitcoin wallet address">
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Pool Configuration -->
                 <div class="settings-section">
                     <h3>Pool Configuration</h3>
@@ -1541,14 +2088,29 @@ INDEX_HTML = """
                             <input type="number" id="max-workers" placeholder="8" min="1">
                         </div>
                         <div class="setting-item">
-                            <label>
-                                <input type="checkbox" id="cpu-mining-enabled"> CPU Mining Enabled
-                            </label>
+                            <label for="gpu-utilization">GPU Utilization (%):</label>
+                            <input type="number" id="gpu-utilization" placeholder="100" min="1" max="100">
+                            <small style="display: block; margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.875rem;">
+                                Percentage of GPU time used for mining (1-100%). Lower values allow other GPU tasks to run.
+                            </small>
                         </div>
                         <div class="setting-item">
-                            <label>
-                                <input type="checkbox" id="gpu-mining-enabled"> GPU Mining Enabled
-                            </label>
+                            <div class="toggle-container">
+                                <label class="toggle-label">CPU Mining Enabled</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="cpu-mining-enabled">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="toggle-container">
+                                <label class="toggle-label">GPU Mining Enabled</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="gpu-mining-enabled">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1778,9 +2340,16 @@ INDEX_HTML = """
 
         function toggleTheme() {
             document.body.classList.toggle('light-theme');
-            localStorage.setItem('theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
+            const isLight = document.body.classList.contains('light-theme');
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+            
+            // Update button icon
+            const themeToggle = document.getElementById('themeToggle');
+            if (themeToggle) {
+                themeToggle.textContent = isLight ? '🌙 Dark' : '☀️ Light';
+            }
         }
-
+        
         function exportStats() {
             window.location.href = '/export';
         }
@@ -1869,6 +2438,9 @@ INDEX_HTML = """
                 if (data.success) {
                     const config = data.config;
                     
+                    // Wallet
+                    document.getElementById('wallet-address').value = config.wallet?.address || '';
+                    
                     // Pool
                     document.getElementById('pool-host').value = config.pool?.host || '';
                     document.getElementById('pool-port').value = config.pool?.port || '';
@@ -1885,6 +2457,7 @@ INDEX_HTML = """
                     document.getElementById('gpu-device').value = config.compute?.gpu_device || 0;
                     document.getElementById('batch-size').value = config.compute?.batch_size || 256;
                     document.getElementById('max-workers').value = config.compute?.max_workers || 8;
+                    document.getElementById('gpu-utilization').value = config.compute?.gpu_utilization_percent || 100;
                     document.getElementById('cpu-mining-enabled').checked = config.compute?.cpu_mining_enabled !== false;
                     document.getElementById('gpu-mining-enabled').checked = config.compute?.gpu_mining_enabled === true;
                     
@@ -1905,6 +2478,9 @@ INDEX_HTML = """
         // Save configuration to server
         async function saveConfig() {
             const config = {
+                wallet: {
+                    address: document.getElementById('wallet-address').value
+                },
                 pool: {
                     host: document.getElementById('pool-host').value,
                     port: parseInt(document.getElementById('pool-port').value) || 3333
@@ -1931,6 +2507,7 @@ INDEX_HTML = """
                     gpu_device: parseInt(document.getElementById('gpu-device').value) || 0,
                     batch_size: parseInt(document.getElementById('batch-size').value) || 256,
                     max_workers: parseInt(document.getElementById('max-workers').value) || 8,
+                    gpu_utilization_percent: Math.max(1, Math.min(100, parseInt(document.getElementById('gpu-utilization').value) || 100)),
                     cpu_mining_enabled: document.getElementById('cpu-mining-enabled').checked,
                     gpu_mining_enabled: document.getElementById('gpu-mining-enabled').checked
                 },
@@ -1943,7 +2520,9 @@ INDEX_HTML = """
                 const response = await fetch('/api/config', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Origin': window.location.origin,
+                        'Referer': window.location.href
                     },
                     body: JSON.stringify({ config })
                 });
@@ -1965,7 +2544,11 @@ INDEX_HTML = """
             try {
                 const response = await fetch('/api/config/cpu-mining', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Origin': window.location.origin,
+                        'Referer': window.location.href
+                    },
                     body: JSON.stringify({ enabled })
                 });
                 const data = await response.json();
@@ -1984,7 +2567,11 @@ INDEX_HTML = """
             try {
                 const response = await fetch('/api/config/gpu-mining', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Origin': window.location.origin,
+                        'Referer': window.location.href
+                    },
                     body: JSON.stringify({ enabled })
                 });
                 const data = await response.json();
@@ -2017,8 +2604,13 @@ INDEX_HTML = """
         });
         
         // Load saved theme and tab
-        if (localStorage.getItem('theme') === 'light') {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
             document.body.classList.add('light-theme');
+            const themeToggle = document.getElementById('themeToggle');
+            if (themeToggle) {
+                themeToggle.textContent = '🌙 Dark';
+            }
         }
         
         const savedTab = localStorage.getItem('activeTab') || 'overview';

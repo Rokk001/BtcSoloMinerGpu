@@ -42,40 +42,101 @@ except Exception as e:
     logger.warning(f"PyOpenCL import failed: {e}")
 
 
-# CUDA SHA256 Kernel
+# CUDA SHA256 Kernel - VOLLSTÄNDIGE IMPLEMENTIERUNG
 CUDA_SHA256_KERNEL = """
 #include <cuda_runtime.h>
 #include <stdint.h>
 
-#define SHA256_DIGEST_LENGTH 32
+// SHA256 constants
+__constant__ uint32_t k[64] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+    0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+    0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+    0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+};
+
+__device__ uint32_t rotr(uint32_t x, int n) {
+    return (x >> n) | (x << (32 - n));
+}
+
+__device__ uint32_t ch(uint32_t x, uint32_t y, uint32_t z) {
+    return (x & y) ^ (~x & z);
+}
+
+__device__ uint32_t maj(uint32_t x, uint32_t y, uint32_t z) {
+    return (x & y) ^ (x & z) ^ (y & z);
+}
+
+__device__ uint32_t sigma0(uint32_t x) {
+    return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22);
+}
+
+__device__ uint32_t sigma1(uint32_t x) {
+    return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25);
+}
+
+__device__ uint32_t gamma0(uint32_t x) {
+    return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3);
+}
+
+__device__ uint32_t gamma1(uint32_t x) {
+    return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10);
+}
 
 __device__ void sha256_transform(uint32_t *state, const uint8_t *data) {
-    // Simplified SHA256 implementation for GPU
-    // This is a basic implementation - production code would use optimized version
     uint32_t w[64];
-    uint32_t a, b, c, d, e, f, g, h, i, j, t1, t2;
+    uint32_t a, b, c, d, e, f, g, h, t1, t2;
     
     // Copy state
     a = state[0]; b = state[1]; c = state[2]; d = state[3];
     e = state[4]; f = state[5]; g = state[6]; h = state[7];
     
-    // Process message (simplified - full implementation would expand 512-bit blocks)
-    // For now, we'll use a basic approach
+    // Prepare message schedule
     for (int i = 0; i < 16; i++) {
-        w[i] = (data[i*4] << 24) | (data[i*4+1] << 16) | (data[i*4+2] << 8) | data[i*4+3];
+        w[i] = ((uint32_t)data[i*4] << 24) | ((uint32_t)data[i*4+1] << 16) |
+               ((uint32_t)data[i*4+2] << 8) | (uint32_t)data[i*4+3];
     }
     
-    // SHA256 compression function (simplified)
-    // Full implementation would include proper message schedule and constants
-    // This is a placeholder that needs proper SHA256 implementation
+    for (int i = 16; i < 64; i++) {
+        w[i] = gamma1(w[i-2]) + w[i-7] + gamma0(w[i-15]) + w[i-16];
+    }
+    
+    // Main loop
+    for (int i = 0; i < 64; i++) {
+        t1 = h + sigma1(e) + ch(e, f, g) + k[i] + w[i];
+        t2 = sigma0(a) + maj(a, b, c);
+        h = g;
+        g = f;
+        f = e;
+        e = d + t1;
+        d = c;
+        c = b;
+        b = a;
+        a = t1 + t2;
+    }
+    
+    // Add to state
+    state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+    state[4] += e; state[5] += f; state[6] += g; state[7] += h;
 }
 
 __global__ void mine_sha256(
     uint8_t *block_headers,
     uint32_t *nonces,
     uint8_t *results,
-    int num_blocks,
-    uint32_t target_prefix
+    int num_blocks
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_blocks) return;
@@ -84,21 +145,79 @@ __global__ void mine_sha256(
     uint8_t *header = &block_headers[idx * 80];
     uint32_t nonce = nonces[idx];
     
-    // Update nonce in header (bytes 76-79)
-    header[76] = (nonce >> 24) & 0xFF;
-    header[77] = (nonce >> 16) & 0xFF;
-    header[78] = (nonce >> 8) & 0xFF;
-    header[79] = nonce & 0xFF;
+    // Update nonce in header (bytes 76-79, little-endian for Bitcoin)
+    header[76] = (nonce >> 0) & 0xFF;
+    header[77] = (nonce >> 8) & 0xFF;
+    header[78] = (nonce >> 16) & 0xFF;
+    header[79] = (nonce >> 24) & 0xFF;
     
-    // Double SHA256
-    uint8_t hash1[SHA256_DIGEST_LENGTH];
-    uint8_t hash2[SHA256_DIGEST_LENGTH];
+    // Initial hash state (SHA256 initial values)
+    uint32_t state1[8] = {
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    };
     
-    // First SHA256 (simplified - needs proper implementation)
-    // For now, we'll fall back to CPU hashing in Python
+    // First SHA256 - Bitcoin block header is 80 bytes, needs 2 blocks
+    // Block 1: bytes 0-63 (64 bytes)
+    sha256_transform(state1, header);
     
-    // Store result
-    results[idx * 32] = 1; // Placeholder
+    // Block 2: bytes 64-79 (16 bytes) + padding
+    uint8_t block2[64];
+    // Copy remaining 16 bytes from header
+    for (int i = 0; i < 16; i++) {
+        block2[i] = header[64 + i];
+    }
+    // Padding: 0x80 followed by zeros
+    block2[16] = 0x80;
+    for (int i = 17; i < 56; i++) {
+        block2[i] = 0;
+    }
+    // Length in bits: 80 * 8 = 640 = 0x280 (big-endian)
+    block2[56] = 0;
+    block2[57] = 0;
+    block2[58] = 0;
+    block2[59] = 0;
+    block2[60] = 0;
+    block2[61] = 0;
+    block2[62] = 0x02;
+    block2[63] = 0x80;
+    
+    sha256_transform(state1, block2);
+    
+    // Prepare second hash input (first hash result)
+    uint8_t hash1[32];
+    for (int i = 0; i < 8; i++) {
+        hash1[i*4] = (state1[i] >> 24) & 0xFF;
+        hash1[i*4+1] = (state1[i] >> 16) & 0xFF;
+        hash1[i*4+2] = (state1[i] >> 8) & 0xFF;
+        hash1[i*4+3] = state1[i] & 0xFF;
+    }
+    
+    // Second SHA256
+    uint32_t state2[8] = {
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    };
+    
+    // Pad hash1 for second SHA256 (64 bytes total)
+    uint8_t padded[64];
+    for (int i = 0; i < 32; i++) padded[i] = hash1[i];
+    padded[32] = 0x80;
+    for (int i = 33; i < 56; i++) padded[i] = 0;
+    // Length in bits: 32 * 8 = 256 = 0x100
+    padded[56] = 0; padded[57] = 0; padded[58] = 0; padded[59] = 0;
+    padded[60] = 0; padded[61] = 0; padded[62] = 0x01; padded[63] = 0x00;
+    
+    sha256_transform(state2, padded);
+    
+    // Store result (little-endian for Bitcoin)
+    uint8_t *result = &results[idx * 32];
+    for (int i = 0; i < 8; i++) {
+        result[i*4] = (state2[i] >> 0) & 0xFF;
+        result[i*4+1] = (state2[i] >> 8) & 0xFF;
+        result[i*4+2] = (state2[i] >> 16) & 0xFF;
+        result[i*4+3] = (state2[i] >> 24) & 0xFF;
+    }
 }
 """
 
@@ -150,7 +269,7 @@ class CUDAMiner:
     
     def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0) -> Optional[Tuple[str, int]]:
         """
-        Hash block header with multiple nonces on GPU
+        Hash block header with multiple nonces on GPU - ECHTE GPU-NUTZUNG
         Args:
             block_header_hex: Block header in hex format (80 bytes)
             num_nonces: Number of nonces to test
@@ -164,60 +283,87 @@ class CUDAMiner:
                 self.log.error(f"Invalid block header length: {len(block_header)}")
                 return None
             
-            # Use optimized parallel CPU batch hashing
-            # NOTE: Proper CUDA kernel implementation is a known enhancement (not critical)
-            # This is a temporary solution that tests multiple nonces in parallel (CPU)
-            # A proper CUDA implementation would use GPU kernels for SHA256
-            # Current implementation provides good performance for most use cases
+            # Compile CUDA kernel if not already compiled
+            if not hasattr(self, '_kernel') or self._kernel is None:
+                try:
+                    mod = SourceModule(CUDA_SHA256_KERNEL)
+                    self._kernel = mod.get_function("mine_sha256")
+                    self.log.info("CUDA SHA256 kernel compiled successfully")
+                except Exception as e:
+                    self.log.error(f"Failed to compile CUDA kernel: {e}")
+                    return None
             
-            from concurrent.futures import ThreadPoolExecutor
             import struct
+            try:
+                import numpy as np
+            except ImportError:
+                self.log.error("numpy is required for CUDA GPU mining. Install with: pip install numpy")
+                return None
             
+            # Prepare block headers (one per nonce)
+            base_header = bytearray(block_header)
+            headers = []
+            nonces = []
+            for i in range(num_nonces):
+                nonce = (start_nonce + i) % (2**32)
+                header_copy = base_header.copy()
+                header_copy[76:80] = struct.pack('<I', nonce)
+                headers.append(bytes(header_copy))
+                nonces.append(nonce)
+            
+            # Allocate GPU memory
+            headers_gpu = cuda.mem_alloc(80 * num_nonces)
+            nonces_gpu = cuda.mem_alloc(4 * num_nonces)
+            results_gpu = cuda.mem_alloc(32 * num_nonces)
+            
+            # Copy data to GPU
+            headers_array = np.frombuffer(b''.join(headers), dtype=np.uint8)
+            nonces_array = np.array(nonces, dtype=np.uint32)
+            
+            cuda.memcpy_htod(headers_gpu, headers_array)
+            cuda.memcpy_htod(nonces_gpu, nonces_array)
+            
+            # Launch kernel
+            # Use 256 threads per block (optimal for most GPUs)
+            threads_per_block = 256
+            blocks_per_grid = (num_nonces + threads_per_block - 1) // threads_per_block
+            
+            self._kernel(
+                headers_gpu,
+                nonces_gpu,
+                results_gpu,
+                np.int32(num_nonces),
+                block=(threads_per_block, 1, 1),
+                grid=(blocks_per_grid, 1)
+            )
+            
+            # Copy results back from GPU
+            results_array = np.empty(32 * num_nonces, dtype=np.uint8)
+            cuda.memcpy_dtoh(results_array, results_gpu)
+            
+            # Find best hash
             best_hash = None
             best_nonce = None
-            base_header = bytearray(block_header)
             
-            # Test multiple nonces in parallel batches
-            def test_nonce_range(nonce_start, count):
-                local_best = None
-                local_best_nonce = None
-                for i in range(count):
-                    nonce = (nonce_start + i) % (2**32)  # Wrap around at 2^32
-                    header_copy = base_header.copy()
-                    # Update nonce in header (bytes 76-79, little-endian in Bitcoin block header)
-                    header_copy[76:80] = struct.pack('<I', nonce)
-                    
-                    # Double SHA256
-                    hash1 = hashlib.sha256(bytes(header_copy)).digest()
-                    hash2 = hashlib.sha256(hash1).digest()
-                    hash_hex = binascii.hexlify(hash2).decode()
-                    
-                    if local_best is None or hash_hex < local_best:
-                        local_best = hash_hex
-                        local_best_nonce = nonce
-                return (local_best, local_best_nonce)
-            
-            # Parallel batch processing
-            num_batches = (num_nonces + self.batch_size - 1) // self.batch_size
-            
-            with ThreadPoolExecutor(max_workers=min(self.max_workers, num_batches)) as executor:
-                futures = []
-                for i in range(num_batches):
-                    nonce_start = (start_nonce + i * self.batch_size) % (2**32)
-                    count = min(self.batch_size, num_nonces - i * self.batch_size)
-                    futures.append(executor.submit(test_nonce_range, nonce_start, count))
+            for i in range(num_nonces):
+                hash_bytes = results_array[i*32:(i+1)*32]
+                hash_hex = binascii.hexlify(hash_bytes).decode()
                 
-                for future in futures:
-                    result = future.result()
-                    if result and result[0]:
-                        if best_hash is None or result[0] < best_hash:
-                            best_hash = result[0]
-                            best_nonce = result[1]
+                if best_hash is None or hash_hex < best_hash:
+                    best_hash = hash_hex
+                    best_nonce = nonces[i]
+            
+            # Free GPU memory
+            headers_gpu.free()
+            nonces_gpu.free()
+            results_gpu.free()
             
             return (best_hash, best_nonce) if best_hash else None
             
         except Exception as e:
             self.log.error(f"CUDA hash error: {e}")
+            import traceback
+            self.log.debug(traceback.format_exc())
             return None
     
     def cleanup(self):
@@ -235,6 +381,185 @@ class CUDAMiner:
         self.cleanup()
 
 
+# OpenCL SHA256 Kernel - VOLLSTÄNDIGE IMPLEMENTIERUNG
+OPENCL_SHA256_KERNEL = """
+#pragma OPENCL EXTENSION cl_khr_byte_addressable_store : enable
+
+// SHA256 constants
+constant uint k[64] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+    0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+    0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+    0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+};
+
+uint rotr(uint x, int n) {
+    return (x >> n) | (x << (32 - n));
+}
+
+uint ch(uint x, uint y, uint z) {
+    return (x & y) ^ (~x & z);
+}
+
+uint maj(uint x, uint y, uint z) {
+    return (x & y) ^ (x & z) ^ (y & z);
+}
+
+uint sigma0(uint x) {
+    return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22);
+}
+
+uint sigma1(uint x) {
+    return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25);
+}
+
+uint gamma0(uint x) {
+    return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3);
+}
+
+uint gamma1(uint x) {
+    return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10);
+}
+
+void sha256_transform(uint *state, const uchar *data) {
+    uint w[64];
+    uint a, b, c, d, e, f, g, h, t1, t2;
+    
+    // Copy state
+    a = state[0]; b = state[1]; c = state[2]; d = state[3];
+    e = state[4]; f = state[5]; g = state[6]; h = state[7];
+    
+    // Prepare message schedule
+    for (int i = 0; i < 16; i++) {
+        w[i] = ((uint)data[i*4] << 24) | ((uint)data[i*4+1] << 16) |
+               ((uint)data[i*4+2] << 8) | (uint)data[i*4+3];
+    }
+    
+    for (int i = 16; i < 64; i++) {
+        w[i] = gamma1(w[i-2]) + w[i-7] + gamma0(w[i-15]) + w[i-16];
+    }
+    
+    // Main loop
+    for (int i = 0; i < 64; i++) {
+        t1 = h + sigma1(e) + ch(e, f, g) + k[i] + w[i];
+        t2 = sigma0(a) + maj(a, b, c);
+        h = g;
+        g = f;
+        f = e;
+        e = d + t1;
+        d = c;
+        c = b;
+        b = a;
+        a = t1 + t2;
+    }
+    
+    // Add to state
+    state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+    state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+}
+
+__kernel void mine_sha256(
+    __global uchar *block_headers,
+    __global uint *nonces,
+    __global uchar *results,
+    int num_blocks
+) {
+    int idx = get_global_id(0);
+    if (idx >= num_blocks) return;
+    
+    // Get block header for this thread
+    __global uchar *header = &block_headers[idx * 80];
+    uint nonce = nonces[idx];
+    
+    // Update nonce in header (bytes 76-79, little-endian for Bitcoin)
+    header[76] = (nonce >> 0) & 0xFF;
+    header[77] = (nonce >> 8) & 0xFF;
+    header[78] = (nonce >> 16) & 0xFF;
+    header[79] = (nonce >> 24) & 0xFF;
+    
+    // Initial hash state (SHA256 initial values)
+    uint state1[8] = {
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    };
+    
+    // First SHA256 - Bitcoin block header is 80 bytes, needs 2 blocks
+    // Block 1: bytes 0-63 (64 bytes)
+    sha256_transform(state1, header);
+    
+    // Block 2: bytes 64-79 (16 bytes) + padding
+    uchar block2[64];
+    // Copy remaining 16 bytes from header
+    for (int i = 0; i < 16; i++) {
+        block2[i] = header[64 + i];
+    }
+    // Padding: 0x80 followed by zeros
+    block2[16] = 0x80;
+    for (int i = 17; i < 56; i++) {
+        block2[i] = 0;
+    }
+    // Length in bits: 80 * 8 = 640 = 0x280 (big-endian)
+    block2[56] = 0;
+    block2[57] = 0;
+    block2[58] = 0;
+    block2[59] = 0;
+    block2[60] = 0;
+    block2[61] = 0;
+    block2[62] = 0x02;
+    block2[63] = 0x80;
+    
+    sha256_transform(state1, block2);
+    
+    // Prepare second hash input (first hash result)
+    uchar hash1[32];
+    for (int i = 0; i < 8; i++) {
+        hash1[i*4] = (state1[i] >> 24) & 0xFF;
+        hash1[i*4+1] = (state1[i] >> 16) & 0xFF;
+        hash1[i*4+2] = (state1[i] >> 8) & 0xFF;
+        hash1[i*4+3] = state1[i] & 0xFF;
+    }
+    
+    // Second SHA256
+    uint state2[8] = {
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    };
+    
+    // Pad hash1 for second SHA256 (64 bytes total)
+    uchar padded[64];
+    for (int i = 0; i < 32; i++) padded[i] = hash1[i];
+    padded[32] = 0x80;
+    for (int i = 33; i < 56; i++) padded[i] = 0;
+    // Length in bits: 32 * 8 = 256 = 0x100
+    padded[56] = 0; padded[57] = 0; padded[58] = 0; padded[59] = 0;
+    padded[60] = 0; padded[61] = 0; padded[62] = 0x01; padded[63] = 0x00;
+    
+    sha256_transform(state2, padded);
+    
+    // Store result (little-endian for Bitcoin)
+    __global uchar *result = &results[idx * 32];
+    for (int i = 0; i < 8; i++) {
+        result[i*4] = (state2[i] >> 0) & 0xFF;
+        result[i*4+1] = (state2[i] >> 8) & 0xFF;
+        result[i*4+2] = (state2[i] >> 16) & 0xFF;
+        result[i*4+3] = (state2[i] >> 24) & 0xFF;
+    }
+}
+"""
+
+
 class OpenCLMiner:
     """OpenCL-based GPU miner"""
     
@@ -246,6 +571,8 @@ class OpenCLMiner:
         self.queue = None
         self.batch_size = batch_size
         self.max_workers = max_workers
+        self._program = None
+        self._kernel = None
         
         if not OPENCL_AVAILABLE:
             raise RuntimeError("PyOpenCL not available. Install with: pip install pyopencl")
@@ -272,13 +599,22 @@ class OpenCLMiner:
             self.queue = cl.CommandQueue(self.context)
             self.log.info(f"OpenCL device {device_id} initialized: {self.device.name}")
             
+            # Compile OpenCL kernel
+            try:
+                self._program = cl.Program(self.context, OPENCL_SHA256_KERNEL).build()
+                self._kernel = self._program.mine_sha256
+                self.log.info("OpenCL SHA256 kernel compiled successfully")
+            except Exception as e:
+                self.log.error(f"Failed to compile OpenCL kernel: {e}")
+                raise RuntimeError(f"OpenCL kernel compilation failed: {e}")
+            
         except Exception as e:
             self.log.error(f"Failed to initialize OpenCL device {device_id}: {e}")
             raise
     
     def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0) -> Optional[Tuple[str, int]]:
         """
-        Hash block header with multiple nonces on GPU
+        Hash block header with multiple nonces on GPU - ECHTE GPU-NUTZUNG
         Args:
             block_header_hex: Block header in hex format (80 bytes)
             num_nonces: Number of nonces to test
@@ -292,60 +628,74 @@ class OpenCLMiner:
                 self.log.error(f"Invalid block header length: {len(block_header)}")
                 return None
             
-            # For now, use optimized CPU batch hashing
-            # NOTE: Proper OpenCL kernel implementation is a known enhancement (not critical)
-            # This is a temporary solution that tests multiple nonces in parallel (CPU)
-            # A proper OpenCL implementation would use GPU kernels for SHA256
-            # Current implementation provides good performance for most use cases
+            if self._kernel is None:
+                self.log.error("OpenCL kernel not compiled")
+                return None
             
-            from concurrent.futures import ThreadPoolExecutor
             import struct
+            try:
+                import numpy as np
+            except ImportError:
+                self.log.error("numpy is required for OpenCL GPU mining. Install with: pip install numpy")
+                return None
             
+            # Prepare block headers (one per nonce)
+            base_header = bytearray(block_header)
+            headers = []
+            nonces = []
+            for i in range(num_nonces):
+                nonce = (start_nonce + i) % (2**32)
+                header_copy = base_header.copy()
+                header_copy[76:80] = struct.pack('<I', nonce)
+                headers.append(bytes(header_copy))
+                nonces.append(nonce)
+            
+            # Allocate OpenCL buffers
+            headers_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=b''.join(headers))
+            nonces_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(nonces, dtype=np.uint32))
+            results_buf = cl.Buffer(self.context, cl.mem_flags.WRITE_ONLY, 32 * num_nonces)
+            
+            # Launch kernel
+            self._kernel(
+                self.queue,
+                (num_nonces,),
+                None,
+                headers_buf,
+                nonces_buf,
+                results_buf,
+                np.int32(num_nonces)
+            )
+            
+            # Wait for kernel to finish
+            self.queue.finish()
+            
+            # Copy results back from GPU
+            results_array = np.empty(32 * num_nonces, dtype=np.uint8)
+            cl.enqueue_copy(self.queue, results_array, results_buf)
+            
+            # Find best hash
             best_hash = None
             best_nonce = None
-            base_header = bytearray(block_header)
             
-            # Test multiple nonces in parallel batches
-            def test_nonce_range(nonce_start, count):
-                local_best = None
-                local_best_nonce = None
-                for i in range(count):
-                    nonce = (nonce_start + i) % (2**32)  # Wrap around at 2^32
-                    header_copy = base_header.copy()
-                    # Update nonce in header (bytes 76-79, little-endian in Bitcoin block header)
-                    header_copy[76:80] = struct.pack('<I', nonce)
-                    
-                    # Double SHA256
-                    hash1 = hashlib.sha256(bytes(header_copy)).digest()
-                    hash2 = hashlib.sha256(hash1).digest()
-                    hash_hex = binascii.hexlify(hash2).decode()
-                    
-                    if local_best is None or hash_hex < local_best:
-                        local_best = hash_hex
-                        local_best_nonce = nonce
-                return (local_best, local_best_nonce)
-            
-            # Parallel batch processing
-            num_batches = (num_nonces + self.batch_size - 1) // self.batch_size
-            
-            with ThreadPoolExecutor(max_workers=min(self.max_workers, num_batches)) as executor:
-                futures = []
-                for i in range(num_batches):
-                    nonce_start = (start_nonce + i * self.batch_size) % (2**32)
-                    count = min(self.batch_size, num_nonces - i * self.batch_size)
-                    futures.append(executor.submit(test_nonce_range, nonce_start, count))
+            for i in range(num_nonces):
+                hash_bytes = results_array[i*32:(i+1)*32]
+                hash_hex = binascii.hexlify(hash_bytes).decode()
                 
-                for future in futures:
-                    result = future.result()
-                    if result and result[0]:
-                        if best_hash is None or result[0] < best_hash:
-                            best_hash = result[0]
-                            best_nonce = result[1]
+                if best_hash is None or hash_hex < best_hash:
+                    best_hash = hash_hex
+                    best_nonce = nonces[i]
+            
+            # Free OpenCL buffers
+            headers_buf.release()
+            nonces_buf.release()
+            results_buf.release()
             
             return (best_hash, best_nonce) if best_hash else None
             
         except Exception as e:
             self.log.error(f"OpenCL hash error: {e}")
+            import traceback
+            self.log.debug(traceback.format_exc())
             return None
     
     def cleanup(self):

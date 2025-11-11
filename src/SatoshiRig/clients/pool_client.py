@@ -39,7 +39,9 @@ class PoolClient :
                 else:
                     self.logger.error(f"Failed to connect to {self.host}:{self.port} after {max_retries} attempts: {e}")
         
-        raise last_error
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Failed to connect to pool: unknown error")
 
     def subscribe(self) -> Tuple[str , str , int] :
         if self.sock is None:
@@ -51,6 +53,8 @@ class PoolClient :
                 raise ConnectionError("Connection closed by server during subscribe")
             lines = data.decode('utf-8', errors='replace').split('\n')
             response = json.loads(lines[0])
+            if 'result' not in response:
+                raise RuntimeError(f"Invalid subscribe response: missing 'result' field: {response}")
             subscription_details , extranonce1 , extranonce2_size = response['result']
             return subscription_details , extranonce1 , int(extranonce2_size)
         except (socket.error, OSError, ConnectionError, json.JSONDecodeError, KeyError, ValueError) as e:

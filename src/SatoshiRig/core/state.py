@@ -1,3 +1,4 @@
+import threading
 from dataclasses import dataclass , field
 from typing import Dict , List , Optional
 
@@ -22,5 +23,11 @@ class MinerState :
     extranonce1: Optional[str] = None
     extranonce2_size: Optional[int] = None
     extranonce2: Optional[str] = None
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    
+    def __post_init__(self):
+        """Initialize lock after dataclass initialization"""
+        if not hasattr(self, '_lock'):
+            self._lock = threading.Lock()
 
 

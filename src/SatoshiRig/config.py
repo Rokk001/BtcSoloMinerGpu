@@ -130,14 +130,22 @@ def save_config(cfg: Dict[str, Any], config_path: str = None) -> str:
             config_path = os.path.join(os.getcwd(), "config", "config.toml")
     
     # Ensure directory exists
-    os.makedirs(os.path.dirname(os.path.abspath(config_path)), exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(config_path)), exist_ok=True)
+    except (OSError, PermissionError) as e:
+        raise RuntimeError(f"Failed to create config directory: {e}")
     
     # Validate config before saving
     validated_cfg = _validate_config(cfg.copy())
     
-    # Write to file
-    with open(config_path, "wb") as f:
-        tomli_w.dump(validated_cfg, f)
+    # Write to file with error handling for filesystem errors
+    try:
+        with open(config_path, "wb") as f:
+            tomli_w.dump(validated_cfg, f)
+    except (OSError, PermissionError, IOError) as e:
+        raise RuntimeError(f"Failed to write config file '{config_path}': {e}. Check file permissions and disk space.")
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error saving config file '{config_path}': {e}")
     
     return config_path
 

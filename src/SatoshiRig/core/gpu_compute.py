@@ -300,6 +300,14 @@ class CUDAMiner:
                 self.log.error("numpy is required for CUDA GPU mining. Install with: pip install numpy")
                 return None
             
+            # Validate input parameters
+            if num_nonces <= 0:
+                self.log.error(f"Invalid num_nonces: {num_nonces} (must be > 0)")
+                return None
+            if start_nonce < 0 or start_nonce >= 2**32:
+                self.log.error(f"Invalid start_nonce: {start_nonce} (must be 0-{2**32-1})")
+                return None
+            
             # Prepare block headers (one per nonce)
             base_header = bytearray(block_header)
             headers = []
@@ -312,53 +320,73 @@ class CUDAMiner:
                 nonces.append(nonce)
             
             # Allocate GPU memory
-            headers_gpu = cuda.mem_alloc(80 * num_nonces)
-            nonces_gpu = cuda.mem_alloc(4 * num_nonces)
-            results_gpu = cuda.mem_alloc(32 * num_nonces)
+            headers_gpu = None
+            nonces_gpu = None
+            results_gpu = None
             
-            # Copy data to GPU
-            headers_array = np.frombuffer(b''.join(headers), dtype=np.uint8)
-            nonces_array = np.array(nonces, dtype=np.uint32)
-            
-            cuda.memcpy_htod(headers_gpu, headers_array)
-            cuda.memcpy_htod(nonces_gpu, nonces_array)
-            
-            # Launch kernel
-            # Use 256 threads per block (optimal for most GPUs)
-            threads_per_block = 256
-            blocks_per_grid = (num_nonces + threads_per_block - 1) // threads_per_block
-            
-            self._kernel(
-                headers_gpu,
-                nonces_gpu,
-                results_gpu,
-                np.int32(num_nonces),
-                block=(threads_per_block, 1, 1),
-                grid=(blocks_per_grid, 1)
-            )
-            
-            # Copy results back from GPU
-            results_array = np.empty(32 * num_nonces, dtype=np.uint8)
-            cuda.memcpy_dtoh(results_array, results_gpu)
-            
-            # Find best hash
-            best_hash = None
-            best_nonce = None
-            
-            for i in range(num_nonces):
-                hash_bytes = results_array[i*32:(i+1)*32]
-                hash_hex = binascii.hexlify(hash_bytes).decode()
+            try:
+                headers_gpu = cuda.mem_alloc(80 * num_nonces)
+                nonces_gpu = cuda.mem_alloc(4 * num_nonces)
+                results_gpu = cuda.mem_alloc(32 * num_nonces)
                 
-                if best_hash is None or hash_hex < best_hash:
-                    best_hash = hash_hex
-                    best_nonce = nonces[i]
-            
-            # Free GPU memory
-            headers_gpu.free()
-            nonces_gpu.free()
-            results_gpu.free()
-            
-            return (best_hash, best_nonce) if best_hash else None
+                # Copy data to GPU
+                headers_array = np.frombuffer(b''.join(headers), dtype=np.uint8)
+                nonces_array = np.array(nonces, dtype=np.uint32)
+                
+                cuda.memcpy_htod(headers_gpu, headers_array)
+                cuda.memcpy_htod(nonces_gpu, nonces_array)
+                
+                # Launch kernel
+                # Use 256 threads per block (optimal for most GPUs)
+                threads_per_block = 256
+                blocks_per_grid = (num_nonces + threads_per_block - 1) // threads_per_block
+                
+                self._kernel(
+                    headers_gpu,
+                    nonces_gpu,
+                    results_gpu,
+                    np.int32(num_nonces),
+                    block=(threads_per_block, 1, 1),
+                    grid=(blocks_per_grid, 1)
+                )
+                
+                # Synchronize to ensure kernel execution is complete before copying results
+                cuda.Context.synchronize()
+                
+                # Copy results back from GPU
+                results_array = np.empty(32 * num_nonces, dtype=np.uint8)
+                cuda.memcpy_dtoh(results_array, results_gpu)
+                
+                # Find best hash
+                best_hash = None
+                best_nonce = None
+                
+                for i in range(num_nonces):
+                    hash_bytes = results_array[i*32:(i+1)*32]
+                    hash_hex = binascii.hexlify(hash_bytes).decode()
+                    
+                    if best_hash is None or hash_hex < best_hash:
+                        best_hash = hash_hex
+                        best_nonce = nonces[i]
+                
+                return (best_hash, best_nonce) if best_hash else None
+            finally:
+                # Free GPU memory (always, even on exception)
+                if headers_gpu:
+                    try:
+                        headers_gpu.free()
+                    except Exception:
+                        pass
+                if nonces_gpu:
+                    try:
+                        nonces_gpu.free()
+                    except Exception:
+                        pass
+                if results_gpu:
+                    try:
+                        results_gpu.free()
+                    except Exception:
+                        pass
             
         except Exception as e:
             self.log.error(f"CUDA hash error: {e}")
@@ -639,6 +667,14 @@ class OpenCLMiner:
                 self.log.error("numpy is required for OpenCL GPU mining. Install with: pip install numpy")
                 return None
             
+            # Validate input parameters
+            if num_nonces <= 0:
+                self.log.error(f"Invalid num_nonces: {num_nonces} (must be > 0)")
+                return None
+            if start_nonce < 0 or start_nonce >= 2**32:
+                self.log.error(f"Invalid start_nonce: {start_nonce} (must be 0-{2**32-1})")
+                return None
+            
             # Prepare block headers (one per nonce)
             base_header = bytearray(block_header)
             headers = []
@@ -651,46 +687,66 @@ class OpenCLMiner:
                 nonces.append(nonce)
             
             # Allocate OpenCL buffers
-            headers_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=b''.join(headers))
-            nonces_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(nonces, dtype=np.uint32))
-            results_buf = cl.Buffer(self.context, cl.mem_flags.WRITE_ONLY, 32 * num_nonces)
+            headers_buf = None
+            nonces_buf = None
+            results_buf = None
             
-            # Launch kernel
-            self._kernel(
-                self.queue,
-                (num_nonces,),
-                None,
-                headers_buf,
-                nonces_buf,
-                results_buf,
-                np.int32(num_nonces)
-            )
-            
-            # Wait for kernel to finish
-            self.queue.finish()
-            
-            # Copy results back from GPU
-            results_array = np.empty(32 * num_nonces, dtype=np.uint8)
-            cl.enqueue_copy(self.queue, results_array, results_buf)
-            
-            # Find best hash
-            best_hash = None
-            best_nonce = None
-            
-            for i in range(num_nonces):
-                hash_bytes = results_array[i*32:(i+1)*32]
-                hash_hex = binascii.hexlify(hash_bytes).decode()
+            try:
+                headers_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=b''.join(headers))
+                nonces_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(nonces, dtype=np.uint32))
+                results_buf = cl.Buffer(self.context, cl.mem_flags.WRITE_ONLY, 32 * num_nonces)
                 
-                if best_hash is None or hash_hex < best_hash:
-                    best_hash = hash_hex
-                    best_nonce = nonces[i]
-            
-            # Free OpenCL buffers
-            headers_buf.release()
-            nonces_buf.release()
-            results_buf.release()
-            
-            return (best_hash, best_nonce) if best_hash else None
+                # Launch kernel
+                self._kernel(
+                    self.queue,
+                    (num_nonces,),
+                    None,
+                    headers_buf,
+                    nonces_buf,
+                    results_buf,
+                    np.int32(num_nonces)
+                )
+                
+                # Wait for kernel to finish
+                self.queue.finish()
+                
+                # Copy results back from GPU
+                results_array = np.empty(32 * num_nonces, dtype=np.uint8)
+                cl.enqueue_copy(self.queue, results_array, results_buf)
+                
+                # Wait for copy to finish (CRITICAL: ensure data is ready)
+                self.queue.finish()
+                
+                # Find best hash
+                best_hash = None
+                best_nonce = None
+                
+                for i in range(num_nonces):
+                    hash_bytes = results_array[i*32:(i+1)*32]
+                    hash_hex = binascii.hexlify(hash_bytes).decode()
+                    
+                    if best_hash is None or hash_hex < best_hash:
+                        best_hash = hash_hex
+                        best_nonce = nonces[i]
+                
+                return (best_hash, best_nonce) if best_hash else None
+            finally:
+                # Free OpenCL buffers (always, even on exception)
+                if headers_buf:
+                    try:
+                        headers_buf.release()
+                    except Exception:
+                        pass
+                if nonces_buf:
+                    try:
+                        nonces_buf.release()
+                    except Exception:
+                        pass
+                if results_buf:
+                    try:
+                        results_buf.release()
+                    except Exception:
+                        pass
             
         except Exception as e:
             self.log.error(f"OpenCL hash error: {e}")

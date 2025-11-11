@@ -649,18 +649,28 @@ def save_config_api():
         
         # Save to config file
         try:
-            from ..config import save_config as save_config_file
-            # Merge with existing config to preserve sensitive data
-            existing_config = get_config_for_ui()
-            # Deep merge: update existing config with new values
-            def deep_merge(base, update):
+            from ..config import save_config as save_config_file, load_config
+            # Load original config from file to preserve sensitive data (not sanitized UI config)
+            try:
+                existing_config = load_config()
+            except Exception:
+                # If loading fails, use sanitized config as fallback
+                existing_config = get_config_for_ui()
+            
+            # Deep merge: update existing config with new values (with deep copy to avoid reference issues)
+            # Add recursion depth limit to prevent stack overflow
+            import copy
+            def deep_merge(base, update, depth=0, max_depth=50):
+                if depth > max_depth:
+                    raise RuntimeError(f"deep_merge recursion depth exceeded {max_depth}, possible circular reference")
                 for key, value in update.items():
                     if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-                        deep_merge(base[key], value)
+                        deep_merge(base[key], value, depth + 1, max_depth)
                     else:
-                        base[key] = value
+                        # Deep copy to avoid reference issues
+                        base[key] = copy.deepcopy(value) if isinstance(value, (dict, list)) else value
             
-            # Create full config for saving (merge with existing)
+            # Create full config for saving (merge with existing to preserve sensitive data)
             full_config = existing_config.copy()
             deep_merge(full_config, config)
             
@@ -854,15 +864,23 @@ def handle_get_status():
     emit("status", get_status())
 
 
+# Global flag to control broadcast thread
+_broadcast_running = True
+
 def broadcast_status():
-    while True:
-        with STATUS_LOCK:
-            # Add current values to history
-            if STATUS["hash_rate"] > 0:
-                STATUS["hash_rate_history"].append(STATUS["hash_rate"])
-            if STATUS["best_difficulty"] > 0:
-                STATUS["difficulty_history"].append(STATUS["best_difficulty"])
-        socketio.emit("status", get_status())
+    global _broadcast_running
+    while _broadcast_running:
+        try:
+            with STATUS_LOCK:
+                # Add current values to history
+                if STATUS["hash_rate"] > 0:
+                    STATUS["hash_rate_history"].append(STATUS["hash_rate"])
+                if STATUS["best_difficulty"] > 0:
+                    STATUS["difficulty_history"].append(STATUS["best_difficulty"])
+            socketio.emit("status", get_status())
+        except Exception as e:
+            logger = logging.getLogger("SatoshiRig.web")
+            logger.error(f"Error in broadcast_status: {e}")
         time.sleep(2)
 
 

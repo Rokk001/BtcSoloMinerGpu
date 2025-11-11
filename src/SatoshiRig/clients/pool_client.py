@@ -80,12 +80,22 @@ class PoolClient :
         buffer = bytearray()
         messages: list[str] = []
         self.sock.settimeout(self.timeout)
+        max_buffer_size = 1024 * 1024  # 1MB max buffer size to prevent memory leak
+        max_iterations = 1000  # Prevent infinite loop
+        iteration_count = 0
         try:
-            while True:
+            while iteration_count < max_iterations:
+                iteration_count += 1
                 chunk = self.sock.recv(4096)
                 if not chunk:
                     raise ConnectionError("Connection closed by server during read_notify")
                 buffer.extend(chunk)
+                
+                # Prevent buffer from growing unbounded
+                if len(buffer) > max_buffer_size:
+                    self.logger.warning(f"Buffer size exceeded {max_buffer_size} bytes, truncating")
+                    buffer = buffer[-max_buffer_size:]  # Keep only last 1MB
+                
                 while True:
                     try:
                         newline_index = buffer.index(10)  # '\n'
@@ -97,8 +107,14 @@ class PoolClient :
                     if line:
                         messages.append(line)
                 # Stop once we have at least one notify message
-                if any('mining.notify' in m for m in messages):
+                if messages and any('mining.notify' in m for m in messages):
                     break
+            else:
+                # Loop exhausted without finding mining.notify
+                if not messages:
+                    self.logger.warning("read_notify: No messages received after max iterations")
+                    return []
+                self.logger.warning(f"read_notify: Max iterations reached, returning {len(messages)} messages")
         except (socket.timeout, socket.error, OSError, ConnectionError) as e:
             self.logger.error(f"read_notify failed: {e}")
             raise
@@ -123,11 +139,13 @@ class PoolClient :
                 "method": "mining.submit"
             }).encode('utf-8') + b"\n"
             self.sock.sendall(payload)
+            # Set timeout before recv to prevent blocking indefinitely
+            self.sock.settimeout(self.timeout)
             response = self.sock.recv(1024)
             if not response:
                 raise ConnectionError("Connection closed by server during submit")
             return response
-        except (socket.error, OSError, ConnectionError) as e:
+        except (socket.timeout, socket.error, OSError, ConnectionError) as e:
             self.logger.error(f"Submit failed: {e}")
             raise
 

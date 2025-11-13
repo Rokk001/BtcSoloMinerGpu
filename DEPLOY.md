@@ -7,7 +7,7 @@ This project uses a small CUDA runtime image and the NVIDIA Container Toolkit fo
 1. GitHub → Actions → "Build and Publish Docker Image".
 2. Click "Run workflow" → Run.
    - Builds the multi-stage image and pushes `ghcr.io/<owner>/satoshirig:latest`.
-3. Optional: For a GitHub release, run "Create GitHub Release" (you may provide a `tag`, e.g., `v2.15.0`).
+3. Optional: For a GitHub release, run "Create GitHub Release" (you may provide a `tag`, e.g., `v2.16.0`).
 
 Notes:
 - Workflows are manual only; they do not run on push/tag automatically.
@@ -27,12 +27,13 @@ docker pull ghcr.io/<owner>/satoshirig:latest
 # Run with GPU access
 docker run -d --name satoshirig --restart unless-stopped \
   --gpus all \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -p 5000:5000 \
   ghcr.io/<owner>/satoshirig:latest
 ```
+
+> Before starting the container, edit the host-side `config/config.toml` and set `[wallet].address` (or use the web UI and restart the miner).
 
 Docker Compose:
 ```yaml
@@ -44,7 +45,6 @@ services:
     runtime: nvidia
     gpus: all
     environment:
-      - WALLET_ADDRESS=YOUR_BTC_ADDRESS
       - COMPUTE_BACKEND=cuda
       - GPU_DEVICE=0
       - WEB_PORT=5000
@@ -52,7 +52,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - ./data:/app/data  # Persistent statistics storage
 ```
 
@@ -62,10 +62,11 @@ services:
 docker build -t satoshirig .
 docker run -d --name satoshirig --restart unless-stopped \
   --gpus all \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -p 5000:5000 \
   satoshirig
 ```
+
+> Reminder: ensure `config/config.toml` contains your wallet address before launching.
 
 ## 4) Troubleshooting
 

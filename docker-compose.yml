@@ -9,8 +9,6 @@ services:
     # image: ghcr.io/rokk001/satoshirig:latest
     restart: unless-stopped
     environment:
-      # REQUIRED: set your BTC wallet address
-      - WALLET_ADDRESS=${WALLET_ADDRESS}
       # OPTIONAL: config path inside container
       - CONFIG_FILE=/app/config/config.toml
       # OPTIONAL: statistics file path (default: /app/data/statistics.json)
@@ -25,7 +23,7 @@ services:
       # Web dashboard port (default: 5000)
       - WEB_PORT=${WEB_PORT:-5000}
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - ./data:/app/data  # Persistent data directory for statistics
     ports:
       - "${WEB_PORT:-5000}:5000"

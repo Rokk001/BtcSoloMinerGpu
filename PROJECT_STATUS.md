@@ -33,9 +33,9 @@ Updated: 2025-01-27
 
 ## Usage
 - Local: `python -m SatoshiRig --wallet <ADDR> [--config ./config/config.toml] [--backend cpu|cuda|opencl] [--gpu 0] [--web-port 5000]`
-- Docker (local build): `docker build -t satoshirig . && docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 satoshirig`
-- Docker (from GHCR): `docker run --rm -e WALLET_ADDRESS=<ADDR> -p 5000:5000 ghcr.io/rokk001/satoshirig:latest`
-- Docker (NVIDIA GPU): `docker run --rm --gpus all -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda ghcr.io/rokk001/satoshirig:latest` or `docker run --rm --runtime=nvidia -e WALLET_ADDRESS=<ADDR> -e COMPUTE_BACKEND=cuda ghcr.io/rokk001/satoshirig:latest`
+- Docker (local build): `docker build -t satoshirig . && docker run --rm -v $(pwd)/config:/app/config -p 5000:5000 satoshirig`
+- Docker (from GHCR): `docker run --rm -v $(pwd)/config:/app/config -p 5000:5000 ghcr.io/rokk001/satoshirig:latest`
+- Docker (NVIDIA GPU): `docker run --rm --gpus all -e COMPUTE_BACKEND=cuda -v $(pwd)/config:/app/config ghcr.io/rokk001/satoshirig:latest` or `docker run --rm --runtime=nvidia -e COMPUTE_BACKEND=cuda -v $(pwd)/config:/app/config ghcr.io/rokk001/satoshirig:latest`
 - Compose/Unraid: `docker compose up -d` with env vars in Unraid UI or `.env`. Can use published image from GHCR: `ghcr.io/rokk001/satoshirig:latest`
 - Web Dashboard: Access via `http://localhost:5000` (or configured port) when running.
 

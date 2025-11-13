@@ -75,11 +75,18 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 ### Docker (Recommended)
 
 ```bash
-# Pull and run the latest image
+# Pull the latest image
+docker pull ghcr.io/rokk001/satoshirig:latest
+
+# Update config/config.toml on the host and set:
+# [wallet]
+# address = "YOUR_BTC_ADDRESS"
+
+# Run the container (bind-mount config to the container)
 docker run -d \
   --name satoshirig \
   --restart unless-stopped \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
+  -v "$(pwd)/config:/app/config" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
@@ -144,7 +151,6 @@ All configuration can be done via environment variables:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `WALLET_ADDRESS` | ✅ **Yes** | - | Your Bitcoin wallet address (REQUIRED) |
 | `CONFIG_FILE` | No | `./config/config.toml` | Path to TOML config file |
 | `COMPUTE_BACKEND` | No | `cpu` | Compute backend: `cpu`, `cuda`, or `opencl` |
 | `GPU_DEVICE` | No | `0` | GPU device index (for CUDA/OpenCL backends) |
@@ -155,13 +161,18 @@ All configuration can be done via environment variables:
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
 
-> **Note:** `compute.backend` represents the chosen GPU runtime (CUDA/OpenCL). CPU mining is controlled exclusively via the **CPU Mining Enabled** toggle in the web UI.
+> **Note:** Set your wallet address via the web dashboard (Settings → Wallet Configuration) or by editing `config/config.toml` (`[wallet].address`). Environment variables are no longer required for the wallet.
+>
+> `compute.backend` represents the chosen GPU runtime (CUDA/OpenCL). CPU mining is controlled exclusively via the **CPU Mining Enabled** toggle in the web UI.
 
 ### Configuration File (`config/config.toml`)
 
 The configuration file supports the following sections:
 
 ```toml
+[wallet]
+address = ""
+
 [pool]
 host = "solo.ckpool.org"
 port = 3333
@@ -217,10 +228,11 @@ Available options:
 docker run -d \
   --name satoshirig \
   --restart unless-stopped \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
+
+> Set `[wallet].address` in `config/config.toml` (or via the web UI, then restart) so the miner can authenticate with the pool.
 
 **Option 2: Build locally:**
 
@@ -229,10 +241,11 @@ docker build -t satoshirig .
 docker run -d \
   --name satoshirig \
   --restart unless-stopped \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -p 5000:5000 \
   satoshirig
 ```
+
+> Reminder: set `[wallet].address` in `config/config.toml` before launching.
 
 ### Docker Image Details
 
@@ -255,14 +268,13 @@ services:
     runtime: nvidia
     gpus: all
     environment:
-      - WALLET_ADDRESS=YOUR_BTC_ADDRESS
       - COMPUTE_BACKEND=cuda
       - GPU_DEVICE=0
       - WEB_PORT=5000
     ports:
       - "5000:5000"
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - ./data:/app/data  # Persistent statistics storage
 
 ### Persistent Statistics
@@ -313,7 +325,6 @@ docker run -d \
   --name satoshirig \
   --restart unless-stopped \
   --gpus all \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -p 5000:5000 \
@@ -327,7 +338,6 @@ docker run -d \
   --name satoshirig \
   --restart unless-stopped \
   --runtime=nvidia \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -e NVIDIA_VISIBLE_DEVICES=all \
@@ -341,7 +351,6 @@ docker run -d \
 docker run -d \
   --name satoshirig \
   --gpus device=0 \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
   -p 5000:5000 \
@@ -356,7 +365,6 @@ For AMD GPUs or integrated GPUs using OpenCL:
 docker run -d \
   --name satoshirig \
   --device=/dev/dri:/dev/dri \
-  -e WALLET_ADDRESS=YOUR_BTC_ADDRESS \
   -e COMPUTE_BACKEND=opencl \
   -e GPU_DEVICE=0 \
   -p 5000:5000 \

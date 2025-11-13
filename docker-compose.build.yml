@@ -10,7 +10,6 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      - WALLET_ADDRESS=${WALLET_ADDRESS}
       - CONFIG_FILE=/app/config/config.toml
       - COMPUTE_BACKEND=${COMPUTE_BACKEND:-cpu}
       - GPU_DEVICE=${GPU_DEVICE:-0}
@@ -18,7 +17,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - WEB_PORT=${WEB_PORT:-5000}
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config
     ports:
       - "${WEB_PORT:-5000}:5000"
     # NVIDIA GPU support - uncomment if needed:

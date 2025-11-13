@@ -1,3 +1,6 @@
+[wallet]
+address = ""
+
 [pool]
 host = "solo.ckpool.org"
 port = 3333

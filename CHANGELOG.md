@@ -5,6 +5,16 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.0] - 2025-11-13
+
+### Changed
+- Wallet address is now stored in `config.toml` (`[wallet].address`) and surfaced via the web UI; environment variables / Docker overrides are no longer required
+- CLI now reads the wallet from configuration and persists CLI-provided addresses back to the config file
+- Docker Compose example no longer injects `WALLET_ADDRESS`
+
+### Fixed
+- Wallet address remains available after container restarts (no reset to empty field)
+
 ## [2.15.0] - 2025-11-13
 
 ### Changed
@@ -56,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.16.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.16.0
 [2.15.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.15.0
 [2.14.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.14.0
 [2.13.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.13.0

@@ -22,8 +22,7 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure required sections and types exist; apply sane defaults."""
     # Wallet section (optional, but preserve if present)
     cfg.setdefault("wallet", {})
-    if "address" not in cfg["wallet"]:
-        cfg["wallet"]["address"] = ""
+    cfg["wallet"]["address"] = str(cfg["wallet"].get("address", "") or "")
     
     cfg.setdefault("pool", {})
     cfg["pool"].setdefault("host", "solo.ckpool.org")
@@ -89,6 +88,7 @@ def load_config() :
     cfg_path = _first_existing_path(DEFAULT_CONFIG_PATHS)
     if not cfg_path :
         return {
+            "wallet": {"address": ""},
             "pool": {"host": "solo.ckpool.org" , "port": 3333} ,
             "network": {
                 "source": os.environ.get("BLOCK_SOURCE" , "web") ,  # web | local

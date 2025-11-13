@@ -60,7 +60,6 @@ COPY config ./config
 ENV PYTHONPATH=/app/src
 
 # Runtime configuration envs
-ENV WALLET_ADDRESS=""
 ENV CONFIG_FILE="/app/config/config.toml"
 ENV COMPUTE_BACKEND="cpu"
 ENV GPU_DEVICE="0"

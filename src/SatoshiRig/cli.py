@@ -7,7 +7,7 @@ import time
 import atexit
 from signal import SIGINT , signal
 
-from .config import load_config
+from .config import load_config, save_config
 from .clients.pool_client import PoolClient
 from .core.state import MinerState
 from .core.miner import Miner
@@ -52,9 +52,9 @@ def main() :
 
     cfg = load_config()
 
-    wallet = args.wallet or os.environ.get("WALLET_ADDRESS")
+    wallet = args.wallet or cfg.get("wallet", {}).get("address")
     if not wallet :
-        print("Missing wallet address. Provide with --wallet <ADDRESS> or WALLET_ADDRESS env var.")
+        print("Missing wallet address. Provide with --wallet <ADDRESS> or set it in config.toml / via the web UI.")
         sys.exit(2)
     
     # Validate wallet address format
@@ -83,12 +83,17 @@ def main() :
         from .web.server import update_status , set_miner_state , set_config , set_miner
         from .web.status import save_statistics_now
         update_status("wallet_address" , wallet)
+        cfg.setdefault("wallet", {})["address"] = wallet
         # Set miner state reference for web API control
         set_miner_state(STATE)
         # Set miner instance reference for dynamic config updates
         set_miner(miner)
         # Set configuration reference for web UI (sanitized - no sensitive data)
         set_config(cfg)
+        try:
+            save_config(cfg)
+        except Exception as exc:
+            logger.warning("Failed to persist wallet to config: %s", exc)
         # Determine blockchain explorer URL from config
         network_config = cfg.get("network" , {})
         if network_config.get("source") == "local" :

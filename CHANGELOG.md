@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.2] - 2025-11-13
+
+### Changed
+- Wallet address is now stored and loaded exclusively from database, never from config.toml
+- Wallet address is automatically removed from config.toml when saving configuration
+- Wallet address from config.toml is ignored on load (only database value is used)
+
+### Fixed
+- Wallet address is now always loaded from database, even if empty
+- Miner correctly uses wallet address set by user in web UI settings
+
 ## [2.17.1] - 2025-11-13
 
 ### Fixed
@@ -90,6 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.17.2]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.2
 [2.17.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.1
 [2.17.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.0
 [2.16.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.16.1

@@ -27,10 +27,10 @@ def _bool_from_str(value: str, default: bool = False) -> bool:
 
 
 def _apply_db_overrides(cfg: Dict[str, Any]) -> None:
-    # Wallet
+    # Wallet - ALWAYS from DB, never from config.toml
     wallet_addr = get_value("settings", "wallet_address")
-    if wallet_addr is not None and wallet_addr.strip():  # Ignore empty strings
-        cfg.setdefault("wallet", {})["address"] = wallet_addr.strip()
+    cfg.setdefault("wallet", {})
+    cfg["wallet"]["address"] = wallet_addr.strip() if wallet_addr is not None else ""
 
     # Pool
     pool_cfg = cfg.setdefault("pool", {})
@@ -128,9 +128,11 @@ def persist_config_to_db(cfg: Dict[str, Any]) -> None:
 
 def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure required sections and types exist; apply sane defaults."""
-    # Wallet section (optional, but preserve if present)
+    # Wallet section - address comes from DB only, preserve what's set
     cfg.setdefault("wallet", {})
-    cfg["wallet"]["address"] = str(cfg["wallet"].get("address", "") or "")
+    # Do NOT set default address - it comes from DB only via _apply_db_overrides
+    if "address" not in cfg["wallet"]:
+        cfg["wallet"]["address"] = ""
     
     cfg.setdefault("pool", {})
     cfg["pool"].setdefault("host", "solo.ckpool.org")
@@ -223,13 +225,17 @@ def load_config() :
         return _validate_config(cfg)
     with open(cfg_path , "rb") as f :
         cfg = tomllib.load(f)
+    # Remove wallet address from loaded config (it's DB-only)
+    if "wallet" in cfg:
+        cfg["wallet"] = cfg["wallet"].copy()
+        cfg["wallet"].pop("address", None)
     compute = cfg.get("compute" , {})
     if "backend" not in compute :
         compute["backend"] = os.environ.get("COMPUTE_BACKEND" , "cpu")
     if "gpu_device" not in compute :
         compute["gpu_device"] = int(os.environ.get("GPU_DEVICE" , "0"))
     cfg["compute"] = compute
-    _apply_db_overrides(cfg)
+    _apply_db_overrides(cfg)  # Wallet comes from DB
     return _validate_config(cfg)
 
 
@@ -258,13 +264,19 @@ def save_config(cfg: Dict[str, Any], config_path: str = None) -> str:
     
     # Validate config before saving
     validated_cfg = _validate_config(cfg.copy())
-
-    persist_config_to_db(validated_cfg)
     
-    # Write to file with error handling for filesystem errors
+    # Remove wallet address before saving to file (it's DB-only)
+    file_cfg = validated_cfg.copy()
+    if "wallet" in file_cfg:
+        file_cfg["wallet"] = file_cfg["wallet"].copy()
+        file_cfg["wallet"].pop("address", None)
+    
+    persist_config_to_db(validated_cfg)  # Save to DB with wallet
+    
+    # Write to file WITHOUT wallet address
     try:
         with open(config_path, "wb") as f:
-            tomli_w.dump(validated_cfg, f)
+            tomli_w.dump(file_cfg, f)
     except (OSError, PermissionError, IOError) as e:
         raise RuntimeError(f"Failed to write config file '{config_path}': {e}. Check file permissions and disk space.")
     except Exception as e:

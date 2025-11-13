@@ -5,6 +5,12 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.1] - 2025-11-13
+
+### Fixed
+- CLI now keeps the web dashboard running even when no wallet address is configured, allowing the address to be entered via the UI before restarting
+- Documentation updated to reflect the new configuration workflow and removal of wallet-related environment variables
+
 ## [2.16.0] - 2025-11-13
 
 ### Changed
@@ -66,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.16.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.16.1
 [2.16.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.16.0
 [2.15.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.15.0
 [2.14.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.14.0

@@ -16,7 +16,7 @@ This document outlines the steps to create a new release of SatoshiRig.
 
 ### 1. Update Version and Documentation
 
-The version should already be updated in `pyproject.toml` (currently v2.16.0).
+The version should already be updated in `pyproject.toml` (currently v2.16.1).
 
 ### 2. Commit and Push Changes
 
@@ -25,7 +25,7 @@ The version should already be updated in `pyproject.toml` (currently v2.16.0).
 git add .
 
 # Commit with release message
-git commit -m "Release v2.16.0: Persist wallet address in config"
+git commit -m "Release v2.16.1: Allow UI startup without wallet"
 
 # Push to main branch
 git push origin main
@@ -35,17 +35,16 @@ git push origin main
 
 ```bash
 # Create annotated tag
-git tag -a v2.16.0 -m "Release v2.16.0
+git tag -a v2.16.1 -m "Release v2.16.1
 
-Highlights:
-- Wallet address is now stored in config.toml and surfaced via the web UI
-- CLI persists CLI-provided wallet addresses back to the configuration
-- Docker examples no longer require WALLET_ADDRESS
+Fixes:
+- CLI now keeps the web UI online when no wallet is configured
+- Documentation reflects the new configuration workflow
 
 See CHANGELOG.md for full details."
 
 # Push tag to remote
-git push origin v2.16.0
+git push origin v2.16.1
 ```
 
 ### 4. Build and Publish Docker Image
@@ -56,26 +55,26 @@ The Docker image will be automatically built and published when you push the tag
 
 1. Go to GitHub → Actions → "Build and Publish Docker Image"
 2. Click "Run workflow"
-3. Select the tag `v2.16.0` (or leave empty to use the latest tag)
+3. Select the tag `v2.16.1` (or leave empty to use the latest tag)
 4. Click "Run workflow"
 
 The workflow will:
 - Build the Docker image
-- Push to `ghcr.io/rokk001/satoshirig:latest` and `ghcr.io/rokk001/satoshirig:v2.16.0`
+- Push to `ghcr.io/rokk001/satoshirig:latest` and `ghcr.io/rokk001/satoshirig:v2.16.1`
 - Automatically make the package public
 
 **Option B: Manual Build**
 
 ```bash
 # Build locally
-docker build -t satoshirig:2.16.0 .
+docker build -t satoshirig:2.16.1 .
 
 # Tag for GHCR
-docker tag satoshirig:2.16.0 ghcr.io/rokk001/satoshirig:2.16.0
-docker tag satoshirig:2.16.0 ghcr.io/rokk001/satoshirig:latest
+docker tag satoshirig:2.16.1 ghcr.io/rokk001/satoshirig:2.16.1
+docker tag satoshirig:2.16.1 ghcr.io/rokk001/satoshirig:latest
 
 # Push to GHCR (requires authentication)
-docker push ghcr.io/rokk001/satoshirig:2.16.0
+docker push ghcr.io/rokk001/satoshirig:2.16.1
 docker push ghcr.io/rokk001/satoshirig:latest
 ```
 
@@ -85,7 +84,7 @@ docker push ghcr.io/rokk001/satoshirig:latest
 
 1. Go to GitHub → Actions → "Create GitHub Release"
 2. Click "Run workflow"
-3. Enter tag: `v2.16.0`
+3. Enter tag: `v2.16.1`
 4. Click "Run workflow"
 
 This will create a GitHub release with auto-generated release notes.
@@ -93,9 +92,9 @@ This will create a GitHub release with auto-generated release notes.
 **Option B: Manual**
 
 1. Go to GitHub → Releases → "Draft a new release"
-2. Choose tag: `v2.16.0`
-3. Title: `v2.16.0`
-4. Description: Copy from `CHANGELOG.md` for version 2.16.0
+2. Choose tag: `v2.16.1`
+3. Title: `v2.16.1`
+4. Description: Copy from `CHANGELOG.md` for version 2.16.1
 5. Click "Publish release"
 
 ## Post-Release
@@ -110,16 +109,16 @@ This will create a GitHub release with auto-generated release notes.
 ```bash
 # 1. Commit and push
 git add .
-git commit -m "Release v2.16.0: Persist wallet address in config"
+git commit -m "Release v2.16.1: Allow UI startup without wallet"
 git push origin main
 
 # 2. Create and push tag
-git tag -a v2.16.0 -m "Release v2.16.0 - See CHANGELOG.md"
-git push origin v2.16.0
+git tag -a v2.16.1 -m "Release v2.16.1 - See CHANGELOG.md"
+git push origin v2.16.1
 
 # 3. Trigger GitHub Actions manually:
 # - Go to Actions → "Build and Publish Docker Image" → Run workflow
-# - Go to Actions → "Create GitHub Release" → Run workflow with tag v2.16.0
+# - Go to Actions → "Create GitHub Release" → Run workflow with tag v2.16.1
 ```
 
 ## Version Numbering
@@ -129,5 +128,5 @@ Follow [Semantic Versioning](https://semver.org/):
 - **MINOR** (0.X.0): New features, backward compatible
 - **PATCH** (0.0.X): Bug fixes, backward compatible
 
-Current version: **2.16.0**
+Current version: **2.16.1**
 

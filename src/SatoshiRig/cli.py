@@ -52,19 +52,46 @@ def main() :
 
     cfg = load_config()
 
-    wallet = args.wallet or cfg.get("wallet", {}).get("address")
-    if not wallet :
-        print("Missing wallet address. Provide with --wallet <ADDRESS> or set it in config.toml / via the web UI.")
-        sys.exit(2)
+    wallet_raw = args.wallet or cfg.get("wallet", {}).get("address")
+    wallet = wallet_raw.strip() if wallet_raw else None
     
-    # Validate wallet address format
-    wallet = wallet.strip()
-    if len(wallet) < 26 or len(wallet) > 62:
-        print(f"Error: Invalid wallet address length. Bitcoin addresses are 26-62 characters long.")
-        sys.exit(2)
-    if not all(c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" for c in wallet):
-        print(f"Error: Invalid wallet address format. Address contains invalid characters.")
-        sys.exit(2)
+    if wallet:
+        # Validate wallet address format
+        if len(wallet) < 26 or len(wallet) > 62:
+            print(f"Error: Invalid wallet address length. Bitcoin addresses are 26-62 characters long.")
+            sys.exit(2)
+        if not all(c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" for c in wallet):
+            print(f"Error: Invalid wallet address format. Address contains invalid characters.")
+            sys.exit(2)
+    else:
+        if WEB_AVAILABLE and not args.no_web:
+            logging.basicConfig(
+                level = getattr(logging , cfg.get("logging" , {}).get("level" , "INFO").upper() , logging.INFO) ,
+                filename = cfg.get("logging" , {}).get("file" , None) ,
+                format = '%(asctime)s %(levelname)s %(name)s %(message)s'
+            )
+            logger = logging.getLogger("SatoshiRig")
+            signal(SIGINT , _handle_sigint)
+
+            web_port = args.web_port or int(os.environ.get("WEB_PORT" , "5000"))
+            from .web.server import update_status , set_miner_state , set_config , set_miner
+            update_status("wallet_address" , "")
+            update_status("running", False)
+            set_miner_state(STATE)
+            set_miner(None)
+            set_config(cfg)
+            web_thread = threading.Thread(target = start_web_server , args = ("0.0.0.0" , web_port) , daemon = True)
+            web_thread.start()
+            logger.warning("Wallet address not configured. Open the web dashboard, set the wallet address, then restart the miner.")
+            try:
+                while True:
+                    time.sleep(5)
+            except KeyboardInterrupt:
+                pass
+            return
+        else:
+            print("Missing wallet address. Provide with --wallet <ADDRESS> or set it in config.toml.")
+            sys.exit(2)
 
     logging.basicConfig(
         level = getattr(logging , cfg.get("logging" , {}).get("level" , "INFO").upper() , logging.INFO) ,

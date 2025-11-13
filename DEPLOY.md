@@ -55,6 +55,7 @@ services:
       - ./config:/app/config
       - ./data:/app/data  # Persistent statistics storage
 ```
+> Configure `[wallet].address` in `config/config.toml` (or via the web UI once the container is up) and restart the service to begin mining.
 
 ## 3) Local build (optional)
 
@@ -65,8 +66,7 @@ docker run -d --name satoshirig --restart unless-stopped \
   -p 5000:5000 \
   satoshirig
 ```
-
-> Reminder: ensure `config/config.toml` contains your wallet address before launching.
+> If you launch without a wallet address in `config/config.toml`, the container will stay idle until you set it via the web UI and restart.
 
 ## 4) Troubleshooting
 

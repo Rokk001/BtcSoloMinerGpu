@@ -90,6 +90,7 @@ docker run -d \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```
+After the container is running, open `http://localhost:5000`, enter your wallet address under **Settings → Wallet Configuration**, click **Save Configuration**, and then restart the container to begin mining.
 
 ### Local Installation
 
@@ -104,6 +105,7 @@ pip install -r requirements.txt
 # Run miner
 python -m SatoshiRig --wallet YOUR_BTC_ADDRESS
 ```
+> If you start the miner without `--wallet`, the web dashboard will still launch so you can configure the address, but mining will not begin until you set the wallet and restart the process.
 
 ---
 

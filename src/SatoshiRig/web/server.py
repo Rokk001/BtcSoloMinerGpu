@@ -12,6 +12,12 @@ from typing import Dict, List, Optional
 
 from flask import Flask, Response, render_template_string, jsonify, request
 from flask_socketio import SocketIO, emit
+# Fix for "Too many packets in payload" error - increase max_decode_packets
+try:
+    from engineio.payload import Payload
+    Payload.max_decode_packets = 500  # Increase from default (likely 16) to handle large payloads
+except ImportError:
+    pass  # Fallback if engineio is not available
 
 from ..core.state import MinerState
 from ..utils.formatting import format_hash_number, format_time_to_block

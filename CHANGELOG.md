@@ -5,6 +5,16 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.2] - 2025-01-XX
+
+### Fixed
+- **SocketIO "Too many packets in payload" error**: Fixed by increasing `Payload.max_decode_packets` from default (16) to 500
+  - This is the root cause fix - EngineIO was limiting the number of packets per payload
+  - Combined with increased buffer sizes from v2.19.1, this should completely resolve the issue
+
+### Changed
+- EngineIO Payload.max_decode_packets is now set to 500 to handle large status payloads with history arrays
+
 ## [2.19.1] - 2025-01-XX
 
 ### Fixed
@@ -181,6 +191,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.19.2]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.2
 [2.19.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.1
 [2.19.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.0
 [2.18.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.18.1

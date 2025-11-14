@@ -28,3 +28,5 @@ backend = "cpu"  # cpu | cuda | opencl
 gpu_device = 0
 batch_size = 256  # Number of nonces per batch for GPU mining
 max_workers = 8  # Maximum number of parallel workers for GPU mining
+cpu_mining_enabled = true
+gpu_mining_enabled = false

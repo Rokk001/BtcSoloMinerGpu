@@ -76,6 +76,15 @@ def _apply_db_overrides(cfg: Dict[str, Any]) -> None:
     if gpu_enabled is not None:
         comp_cfg["gpu_mining_enabled"] = _bool_from_str(gpu_enabled, False)
 
+    # Logging
+    log_cfg = cfg.setdefault("logging", {})
+    log_level = get_value("logging", "level")
+    if log_level is not None:
+        log_cfg["level"] = log_level
+    log_file = get_value("logging", "file")
+    if log_file is not None:
+        log_cfg["file"] = log_file
+
     # Database retention
     db_cfg = cfg.setdefault("database", {})
     retention = get_value("database", "retention_days")
@@ -120,6 +129,11 @@ def persist_config_to_db(cfg: Dict[str, Any]) -> None:
         "gpu_mining_enabled",
         "1" if comp_cfg.get("gpu_mining_enabled", False) else "0",
     )
+
+    # Logging
+    log_cfg = cfg.get("logging", {})
+    set_value("logging", "level", str(log_cfg.get("level", "INFO")))
+    set_value("logging", "file", str(log_cfg.get("file", "miner.log")))
 
     # Database retention
     db_cfg = cfg.get("database", {})
@@ -283,5 +297,8 @@ def save_config(cfg: Dict[str, Any], config_path: str = None) -> str:
         raise RuntimeError(f"Unexpected error saving config file '{config_path}': {e}")
     
     return config_path
+
+
+CPU_MINING_ENABLED = True
 
 

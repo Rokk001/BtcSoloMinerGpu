@@ -5,6 +5,28 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.18.0] - 2025-01-XX
+
+### Added
+- **Verbose Logging System**: Comprehensive logging system with configurable log levels
+  - Logging level can be set in web UI under Settings (DEBUG, INFO, WARNING, ERROR)
+  - Logging level persists to database and config file
+  - Dynamic logging level updates at runtime without restart
+  - Extensive DEBUG-level logging throughout the miner for detailed troubleshooting
+  - Log file path configurable via web UI
+- **Enhanced Debug Logging**: Added detailed DEBUG logs for:
+  - GPU miner initialization (CUDA/OpenCL)
+  - Pool connection and subscription details
+  - Mining notification parameters
+  - Coinbase and merkle root calculations
+  - GPU and CPU mining operations
+  - Hash computations and hash rate statistics
+  - Block solutions and pool submissions
+
+### Changed
+- Logging configuration now persists to database alongside other settings
+- Root logger, SatoshiRig logger, web logger, and miner logger all respect the configured log level
+
 ## [2.17.3] - 2025-11-13
 
 ### Fixed
@@ -109,6 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.18.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.18.0
 [2.17.3]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.3
 [2.17.2]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.2
 [2.17.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.17.1

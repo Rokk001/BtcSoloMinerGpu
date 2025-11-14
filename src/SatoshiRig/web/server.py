@@ -601,6 +601,19 @@ def save_config_api():
             except (ValueError, TypeError):
                 validation_errors.append("Database retention must be a valid number")
 
+        # Validate logging configuration
+        if "logging" in config:
+            if "level" in config["logging"]:
+                log_level = config["logging"]["level"].upper()
+                if log_level not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+                    validation_errors.append(
+                        "Logging level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+                    )
+            if "file" in config["logging"]:
+                log_file = config["logging"]["file"].strip()
+                if not log_file:
+                    validation_errors.append("Log file path cannot be empty")
+
         if validation_errors:
             return (
                 jsonify(
@@ -661,6 +674,16 @@ def save_config_api():
             saved_path = save_config_file(full_config, config_path)
             logger = logging.getLogger("SatoshiRig.web")
             logger.info(f"Configuration saved to {saved_path}")
+
+            # Update logging level if changed
+            if "logging" in config:
+                log_level = config["logging"].get("level", "INFO")
+                log_file = config["logging"].get("file", None)
+                try:
+                    update_logging_level(log_level, log_file)
+                    logger.info(f"Logging level updated to {log_level}")
+                except Exception as e:
+                    logger.warning(f"Failed to update logging level: {e}")
 
             # Reload config from file to get the saved wallet address
             try:
@@ -1078,6 +1101,62 @@ def set_miner(miner):
     """Set the miner instance reference for dynamic config updates"""
     global _miner
     _miner = miner
+
+
+def update_logging_level(log_level: str, log_file: str = None):
+    """Update logging level dynamically at runtime"""
+    import logging
+    
+    # Convert string level to logging constant
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    
+    level = level_map.get(log_level.upper(), logging.INFO)
+    
+    # Update root logger level
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    
+    # Update SatoshiRig logger
+    satoshirig_logger = logging.getLogger("SatoshiRig")
+    satoshirig_logger.setLevel(level)
+    
+    # Update web logger
+    web_logger = logging.getLogger("SatoshiRig.web")
+    web_logger.setLevel(level)
+    
+    # Update miner logger if miner exists
+    global _miner
+    if _miner and hasattr(_miner, 'log'):
+        _miner.log.setLevel(level)
+    
+    # Update all handlers to the new level
+    for handler in root_logger.handlers:
+        handler.setLevel(level)
+    
+    # If log file is specified and different, reconfigure handlers
+    if log_file:
+        # Remove existing file handlers
+        for handler in list(root_logger.handlers):
+            if isinstance(handler, logging.FileHandler):
+                root_logger.removeHandler(handler)
+                handler.close()
+        
+        # Add new file handler if log file is specified
+        try:
+            file_handler = logging.FileHandler(log_file, mode='a')
+            file_handler.setLevel(level)
+            file_handler.setFormatter(
+                logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+            )
+            root_logger.addHandler(file_handler)
+        except Exception as e:
+            web_logger.warning(f"Failed to create file handler for {log_file}: {e}")
 
 
 def set_config(config: dict):
@@ -2292,6 +2371,32 @@ INDEX_HTML = """
                     </div>
                 </div>
                 
+                <!-- Logging Configuration -->
+                <div class="settings-section">
+                    <h3>Logging Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label for="logging-level">Logging Level:</label>
+                            <select id="logging-level">
+                                <option value="DEBUG">DEBUG - Verbose (all messages)</option>
+                                <option value="INFO">INFO - Informational messages</option>
+                                <option value="WARNING">WARNING - Warnings only</option>
+                                <option value="ERROR">ERROR - Errors only</option>
+                            </select>
+                            <small style="display: block; margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.875rem;">
+                                Controls the verbosity of log messages. DEBUG provides the most detailed logging.
+                            </small>
+                        </div>
+                        <div class="setting-item">
+                            <label for="logging-file">Log File:</label>
+                            <input type="text" id="logging-file" placeholder="miner.log">
+                            <small style="display: block; margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.875rem;">
+                                Path to the log file (relative to the working directory).
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Save Button -->
                 <div class="settings-actions">
                     <button onclick="saveConfig()" class="btn-primary">💾 Save Configuration</button>
@@ -2638,6 +2743,10 @@ INDEX_HTML = """
                     // Database
                     document.getElementById('db-retention').value = config.database?.retention_days || 30;
                     
+                    // Logging
+                    document.getElementById('logging-level').value = config.logging?.level || 'INFO';
+                    document.getElementById('logging-file').value = config.logging?.file || 'miner.log';
+                    
                     console.log('Configuration loaded successfully');
                 } else {
                     console.error('Failed to load config:', data.error);
@@ -2668,8 +2777,8 @@ INDEX_HTML = """
                     rpc_password: document.getElementById('rpc-password').value
                 },
                 logging: {
-                    file: 'miner.log',
-                    level: 'INFO'
+                    file: document.getElementById('logging-file').value || 'miner.log',
+                    level: document.getElementById('logging-level').value || 'INFO'
                 },
                 miner: {
                     restart_delay_secs: 2,

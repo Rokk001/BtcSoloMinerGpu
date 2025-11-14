@@ -12,6 +12,13 @@ import requests
 from ..clients.pool_client import PoolClient
 from .state import MinerState
 
+# Initialize logger
+logging.basicConfig(
+    filename='logs/mining.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 try:
     from ..web import update_status, update_pool_status
 except ImportError:
@@ -76,6 +83,7 @@ class Miner:
         if gpu_mining_enabled and compute_backend in ["cuda", "opencl"]:
             if compute_backend == "cuda":
                 try:
+                    self.log.debug(f"Initializing CUDA GPU miner: device={gpu_device}, batch_size={batch_size}, max_workers={max_workers}")
                     from .gpu_compute import create_gpu_miner
 
                     self.gpu_miner = create_gpu_miner(
@@ -88,12 +96,14 @@ class Miner:
                     self.log.info(
                         f"CUDA GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})"
                     )
+                    self.log.debug("CUDA GPU miner initialization completed successfully")
                 except Exception as e:
                     self.log.error(f"Failed to initialize CUDA miner: {e}")
                     self.log.warning("Falling back to CPU mining")
                     self.gpu_miner = None
             elif compute_backend == "opencl":
                 try:
+                    self.log.debug(f"Initializing OpenCL GPU miner: device={gpu_device}, batch_size={batch_size}, max_workers={max_workers}")
                     from .gpu_compute import create_gpu_miner
 
                     self.gpu_miner = create_gpu_miner(
@@ -106,6 +116,7 @@ class Miner:
                     self.log.info(
                         f"OpenCL GPU miner initialized on device {gpu_device} (batch_size={batch_size}, max_workers={max_workers})"
                     )
+                    self.log.debug("OpenCL GPU miner initialization completed successfully")
                 except Exception as e:
                     self.log.error(f"Failed to initialize OpenCL miner: {e}")
                     self.log.warning("Falling back to CPU mining")
@@ -161,9 +172,11 @@ class Miner:
             self.log.info(
                 f"GPU configuration changed (backend: {old_backend} -> {new_backend}, gpu_enabled: {old_gpu_enabled} -> {new_gpu_enabled})"
             )
+            self.log.debug(f"Reinitializing GPU miner with new configuration")
             # Reset nonce counter when GPU is toggled
             if not new_gpu_enabled:
                 self.gpu_nonce_counter = 0
+                self.log.debug("GPU mining disabled, resetting nonce counter")
             self._initialize_gpu_miner()
 
     def _get_current_block_height(self) -> int:
@@ -300,17 +313,22 @@ class Miner:
 
         try:
             self.log.info("Connecting to pool %s:%s...", self.pool.host, self.pool.port)
+            self.log.debug(f"Pool connection parameters: host={self.pool.host}, port={self.pool.port}")
             self.pool.connect()
             self.log.info("Connected to pool, subscribing...")
+            self.log.debug("Sending subscription request to pool")
             update_pool_status(True, self.pool.host, self.pool.port)
             sub_details, extranonce1, extranonce2_size = self.pool.subscribe()
+            self.log.debug(f"Subscription response: extranonce1={extranonce1}, extranonce2_size={extranonce2_size}")
             with self.state._lock:
                 self.state.subscription_details = sub_details
                 self.state.extranonce1 = extranonce1
                 self.state.extranonce2_size = extranonce2_size
             self.log.info("Subscribed to pool, authorizing...")
+            self.log.debug(f"Authorizing with wallet: {self.wallet[:10]}...")
             self.pool.authorize(self.wallet)
             self.log.info("Authorized, waiting for mining notification...")
+            self.log.debug("Waiting for mining.notify message from pool")
             responses = self.pool.read_notify()
             if not responses or len(responses) == 0:
                 raise RuntimeError("No mining notification received from pool")
@@ -331,8 +349,10 @@ class Miner:
                     self.state.clean_jobs,
                 ) = responses[0]["params"]
                 self.state.updated_prev_hash = self.state.prev_hash
+            self.log.debug(f"Mining notification received: job_id={self.state.job_id}, prev_hash={self.state.prev_hash[:16]}..., version={self.state.version}, nbits={self.state.nbits}, ntime={self.state.ntime}")
             update_status("job_id", self.state.job_id)
             self.log.info("Mining notification received, starting mining loop...")
+            self.log.debug("Entering main mining loop")
             return self._mine_loop()
         except Exception as e:
             self.log.error(f"Failed to start mining: {e}", exc_info=True)
@@ -463,6 +483,7 @@ class Miner:
             raise RuntimeError(f"Invalid extranonce2_size: {extranonce2_size}")
 
         extranonce2 = hex(random.getrandbits(32))[2:].zfill(2 * extranonce2_size)
+        self.log.debug(f"Generated extranonce2: {extranonce2}")
         with self.state._lock:
             self.state.extranonce2 = extranonce2
 
@@ -482,12 +503,14 @@ class Miner:
             )
 
         coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
+        self.log.debug(f"Built coinbase: length={len(coinbase)}, extranonce1={extranonce1}, extranonce2={extranonce2}")
         coinbase_hash_bin = hashlib.sha256(
             hashlib.sha256(binascii.unhexlify(coinbase)).digest()
         ).digest()
 
         merkle_root = coinbase_hash_bin
         if merkle_branch:
+            self.log.debug(f"Computing merkle root with {len(merkle_branch)} branch hashes")
             for branch_hash in merkle_branch:
                 merkle_root = hashlib.sha256(
                     hashlib.sha256(
@@ -496,6 +519,7 @@ class Miner:
                 ).digest()
 
         merkle_root = binascii.hexlify(merkle_root).decode()
+        self.log.debug(f"Computed merkle_root: {merkle_root[:32]}...")
         # Reverse byte order (little-endian to big-endian) - ensure even length
         if len(merkle_root) % 2 != 0:
             self.log.error(f"Invalid merkle_root hex length: {len(merkle_root)}")
@@ -525,11 +549,14 @@ class Miner:
             self.state.local_height = current_height
 
         self.log.info("Mining block height %s", current_height + 1)
+        self.log.debug(f"Mining parameters: height={current_height + 1}, target_difficulty={target_difficulty if target_int > 0 else 'N/A'}, target={target[:16]}...")
         update_status("current_height", current_height + 1)
 
         prefix_zeros = "0" * self.cfg.get("miner", {}).get("hash_log_prefix_zeros", 7)
+        self.log.debug(f"Hash log prefix zeros: {len(prefix_zeros)} (will log hashes starting with {prefix_zeros})")
         hash_count = 0
         start_time = time.time()
+        self.log.debug("Starting hash computation loop")
 
         while True:
             with self.state._lock:
@@ -638,12 +665,14 @@ class Miner:
                     prev_hash, merkle_root, ntime, nbits, "00000000"
                 )
                 block_header_hex = block_header_base
+                self.log.debug(f"GPU mining: block_header_base length={len(block_header_base)}, start_nonce={self.gpu_nonce_counter}")
 
                 # Use sequential nonce counter for better coverage (cycles through 2^32)
                 # Use batch_size from config instead of hardcoded value
                 num_nonces_per_batch = self.cfg.get("compute", {}).get(
                     "batch_size", 256
                 )
+                self.log.debug(f"GPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.gpu_nonce_counter}")
 
                 # Try GPU batch hashing (use sequential nonce counter for better coverage)
                 try:
@@ -654,6 +683,7 @@ class Miner:
                         start_nonce=self.gpu_nonce_counter,
                     )
                     batch_duration = time.time() - batch_start_time
+                    self.log.debug(f"GPU batch completed in {batch_duration:.4f}s, result={'found' if result else 'none'}")
 
                     if result and isinstance(result, tuple) and len(result) == 2:
                         hash_hex, best_nonce = result
@@ -689,6 +719,7 @@ class Miner:
                     nonce_hex = None
 
             # CPU mining (runs independently if enabled, regardless of GPU status)
+            # This should run even when GPU is disabled or not available
             if cpu_mining_enabled:
                 # CPU mining (original implementation)
                 with self.state._lock:
@@ -696,6 +727,7 @@ class Miner:
                     ntime = self.state.ntime
                     nbits = self.state.nbits
                 cpu_nonce_hex = hex(random.getrandbits(32))[2:].zfill(8)
+                self.log.debug(f"CPU mining: generated nonce={cpu_nonce_hex}")
                 block_header = self._build_block_header(
                     prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
                 )
@@ -712,6 +744,7 @@ class Miner:
                         hashlib.sha256(block_header_bytes).digest()
                     ).digest()
                     cpu_hash_hex = binascii.hexlify(cpu_hash_hex).decode()
+                    self.log.debug(f"CPU hash computed: {cpu_hash_hex[:32]}...")
                     hash_count += 1
                     self.total_hash_count += 1
                     update_status("total_hashes", self.total_hash_count)
@@ -747,7 +780,7 @@ class Miner:
 
             if hash_hex.startswith(prefix_zeros):
                 self.log.debug(
-                    "Candidate hash %s at height %s", hash_hex, current_height + 1
+                    "Candidate hash %s at height %s (nonce=%s)", hash_hex, current_height + 1, nonce_hex
                 )
                 update_status("last_hash", hash_hex)
             try:
@@ -785,20 +818,34 @@ class Miner:
             if elapsed > 0:
                 hash_rate = hash_count / elapsed
                 update_status("hash_rate", hash_rate)
+                # Log hash rate every 1000 hashes in DEBUG mode
+                if hash_count % 1000 == 0:
+                    self.log.debug(f"Hash rate: {hash_rate:.2f} H/s, total hashes: {hash_count}, elapsed: {elapsed:.2f}s")
 
             if hash_hex < target:
                 self.log.info("Block solved at height %s", current_height + 1)
                 self.log.info("Block hash %s", hash_hex)
-                self.log.debug("Blockheader %s", block_header)
+                # Build block header for logging (reconstruct from solution)
+                with self.state._lock:
+                    prev_hash = self.state.prev_hash
+                    ntime = self.state.ntime
+                    nbits = self.state.nbits
+                solution_block_header = self._build_block_header(
+                    prev_hash, merkle_root, ntime, nbits, nonce_hex
+                )
+                self.log.debug("Blockheader %s", solution_block_header)
+                self.log.debug(f"Solution details: nonce={nonce_hex}, extranonce2={extranonce2}, ntime={ntime}, job_id={self.state.job_id}")
                 try:
                     with self.state._lock:
                         job_id = self.state.job_id
                         extranonce2 = self.state.extranonce2
                         ntime = self.state.ntime
+                    self.log.debug(f"Submitting solution to pool: wallet={self.wallet[:10]}..., job_id={job_id}, nonce={nonce_hex}")
                     ret = self.pool.submit(
                         self.wallet, job_id, extranonce2, ntime, nonce_hex
                     )
                     self.log.info("Pool response %s", ret)
+                    self.log.debug(f"Full pool response: {ret}")
                     try:
                         from ..web import add_share
 

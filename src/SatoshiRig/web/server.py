@@ -253,7 +253,17 @@ app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(
 cors_origins = os.environ.get(
     "CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000"
 ).split(",")
-socketio = SocketIO(app, cors_allowed_origins=cors_origins)
+# Configure SocketIO with increased buffer size to handle larger payloads
+# This fixes the "Too many packets in payload" error
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=cors_origins,
+    max_http_buffer_size=1e6,  # 1MB buffer size (default is 100KB)
+    ping_timeout=60,
+    ping_interval=25,
+    logger=False,  # Disable SocketIO's own logging to reduce noise
+    engineio_logger=False
+)
 
 
 @app.route("/favicon.ico")
@@ -880,6 +890,14 @@ def set_db_retention():
         logger = logging.getLogger("SatoshiRig.web")
         logger.error(f"Error setting DB retention: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@socketio.on_error_default
+def default_error_handler(e):
+    """Handle SocketIO errors gracefully"""
+    logger = logging.getLogger("SatoshiRig.web")
+    logger.warning(f"SocketIO error: {e}")
+    return False  # Don't propagate the error
 
 
 @socketio.on("connect")

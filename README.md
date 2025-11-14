@@ -295,8 +295,8 @@ docker run -d \
   --gpus all \
   -e COMPUTE_BACKEND=cuda \
   -e GPU_DEVICE=0 \
-  -v "$(pwd)/config:/app/config" \
   -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
   -p 5000:5000 \
   ghcr.io/rokk001/satoshirig:latest
 ```

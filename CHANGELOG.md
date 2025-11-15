@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.10] - 2025-01-27
+
+### Fixed
+- **Critical: Mining Loop Stuck at Iteration 0**: Fixed issue where mining loop would get stuck at iteration 0
+  - `hash_count` was only incremented when CPU mining succeeded
+  - If `block_header` build failed or `binascii.unhexlify()` failed, `hash_count` was not incremented
+  - This prevented loop from progressing and no further iteration logs were shown
+  - `hash_count` is now incremented in all cases (success, failure, errors)
+  - Mining loop now continuously runs and produces regular logs every 1000 iterations
+  - Hash rate is now correctly calculated and displayed in dashboard
+
 ## [2.25.9] - 2025-01-27
 
 ### Fixed

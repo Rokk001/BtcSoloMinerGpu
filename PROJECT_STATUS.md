@@ -2,7 +2,16 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.9)
+## Latest Changes (v2.25.10)
+- **Critical Fix: Mining Loop Stuck at Iteration 0**: Fixed issue where mining loop would get stuck at iteration 0
+  - `hash_count` was only incremented when CPU mining succeeded
+  - If `block_header` build failed or `binascii.unhexlify()` failed, `hash_count` was not incremented
+  - This prevented loop from progressing and no further iteration logs were shown
+  - `hash_count` is now incremented in all cases (success, failure, errors)
+  - Mining loop now continuously runs and produces regular logs every 1000 iterations
+  - Hash rate is now correctly calculated and displayed in dashboard
+
+## Previous Changes (v2.25.9)
 - **Critical Fix: Hash Rate Not Calculated**: Fixed issue where hash rate was only calculated when hash was successfully produced
   - Hash rate calculation was moved before `hash_hex`/`nonce_hex` validation check
   - Hash rate is now calculated in every iteration, regardless of whether hash was produced

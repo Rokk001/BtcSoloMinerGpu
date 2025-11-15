@@ -1128,6 +1128,8 @@ class Miner:
                         self.log.warning(f"GPU mining: Skipping due to block header build failure (iteration {hash_count})")
                     hash_hex = None
                     nonce_hex = None
+                    # Still increment hash_count to ensure loop progresses
+                    # Note: hash_count will be incremented by CPU mining if enabled, or by error handling below
                 else:
                     try:
                         batch_start_time = time.time()
@@ -1171,12 +1173,16 @@ class Miner:
                             # GPU returned None - CPU mining will handle it if enabled
                             hash_hex = None
                             nonce_hex = None
+                            # Still increment hash_count to ensure loop progresses
+                            # Note: hash_count will be incremented by CPU mining if enabled, or by error handling below
                     except Exception as e:
                         # GPU error - CPU mining will handle it if enabled
                         if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
                             self.log.error(f"GPU mining error (iteration {hash_count}): {e}, CPU mining will continue if enabled", exc_info=True)
                         hash_hex = None
                         nonce_hex = None
+                        # Still increment hash_count to ensure loop progresses
+                        # Note: hash_count will be incremented by CPU mining if enabled, or by error handling below
             else:
                 # GPU mining disabled or not available
                 if hash_count % 1000 == 0:
@@ -1216,6 +1222,10 @@ class Miner:
                     # Block header build failed, skip this iteration
                     cpu_hash_hex = None
                     cpu_nonce_hex = None
+                    # Still increment hash_count to ensure loop progresses
+                    hash_count += 1
+                    self.total_hash_count += 1
+                    update_status("total_hashes", self.total_hash_count)
                 else:
                     try:
                         block_header_bytes = binascii.unhexlify(block_header)
@@ -1224,6 +1234,10 @@ class Miner:
                             self.log.error(f"CPU mining: Invalid block_header hex (iteration {hash_count}): {block_header[:50]}... Error: {e}")
                         cpu_hash_hex = None
                         cpu_nonce_hex = None
+                        # Still increment hash_count to ensure loop progresses
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        update_status("total_hashes", self.total_hash_count)
                     else:
                         cpu_hash_hex = hashlib.sha256(
                             hashlib.sha256(block_header_bytes).digest()
@@ -1243,6 +1257,8 @@ class Miner:
                     self.log.debug(f"CPU mining: DISABLED (iteration {hash_count})")
                 cpu_hash_hex = None
                 cpu_nonce_hex = None
+                # Still increment hash_count to ensure loop progresses (even if only GPU is enabled)
+                # Note: hash_count will be incremented by GPU mining if enabled, or by the error handling below
             
             # If GPU didn't produce a hash, use CPU hash
             # This code should run regardless of whether CPU mining is enabled or disabled

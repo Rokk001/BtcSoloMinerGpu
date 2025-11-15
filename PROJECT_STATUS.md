@@ -2,7 +2,22 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.3)
+## Latest Changes (v2.25.4)
+- **Critical Fix: Pool Connection Timeout and Mining Loop Blocking**: Fixed issue where mining loop was blocked waiting for pool notifications
+  - `miner.start()` was blocking on `read_notify()` waiting for `mining.notify` message
+  - After 30 seconds timeout, connection would break and mining would never start
+  - Implemented background notification listener thread to continuously listen for pool notifications
+  - Mining loop now starts immediately even if initial notification is not received
+  - Notification thread updates state asynchronously when new blocks arrive
+  - Prevents "read_notify failed: timed out" errors that prevented mining from starting
+- **Asynchronous Notification Handling**: Improved pool notification processing
+  - Background thread continuously listens for `mining.notify` messages
+  - Mining loop no longer blocks waiting for notifications
+  - Initial notification wait reduced from 30 seconds to 5 seconds
+  - State updates happen asynchronously without blocking mining operations
+  - Better handling of pools that don't send immediate notifications after authorize
+
+## Previous Changes (v2.25.3)
 - **Critical Race Condition Fix**: Fixed timeout when `miner.start()` and `connect_to_pool_only()` run simultaneously
   - `miner.start()` now checks if pool is already connected before attempting new connection
   - Reuses existing connection and subscription if available (from `connect_to_pool_only()`)

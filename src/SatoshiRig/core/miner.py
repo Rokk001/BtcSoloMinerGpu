@@ -3,6 +3,7 @@ import hashlib
 import logging
 import random
 import select
+import socket
 import threading
 import time
 from datetime import datetime
@@ -59,6 +60,8 @@ class Miner:
         )
         self._config_lock = threading.Lock()  # Lock for thread-safe config access
         self._running = False  # Flag to prevent multiple calls to start()
+        self._notification_thread = None  # Thread for listening to pool notifications
+        self._notification_thread_running = False  # Flag for notification thread
 
         # Initialize GPU miner if configured
         self._initialize_gpu_miner()
@@ -429,31 +432,83 @@ class Miner:
                 self.log.info("Subscribed to pool, authorizing...")
                 self.log.debug(f"Authorizing with wallet: {self.wallet[:10]}...")
                 self.pool.authorize(self.wallet)
-                self.log.info("Authorized, waiting for mining notification...")
-            self.log.debug("Waiting for mining.notify message from pool")
-            responses = self.pool.read_notify()
-            if not responses or len(responses) == 0:
-                raise RuntimeError("No mining notification received from pool")
-            if "params" not in responses[0] or len(responses[0]["params"]) < 9:
-                raise RuntimeError(
-                    f"Invalid mining notification format: {responses[0] if responses else 'empty'}"
-                )
-            with self.state._lock:
-                (
-                    self.state.job_id,
-                    self.state.prev_hash,
-                    self.state.coinbase_part1,
-                    self.state.coinbase_part2,
-                    self.state.merkle_branch,
-                    self.state.version,
-                    self.state.nbits,
-                    self.state.ntime,
-                    self.state.clean_jobs,
-                ) = responses[0]["params"]
-                self.state.updated_prev_hash = self.state.prev_hash
-            self.log.debug(f"Mining notification received: job_id={self.state.job_id}, prev_hash={self.state.prev_hash[:16]}..., version={self.state.version}, nbits={self.state.nbits}, ntime={self.state.ntime}")
-            update_status("job_id", self.state.job_id)
-            self.log.info("Mining notification received, starting mining loop...")
+                self.log.info("Authorized, starting notification listener and mining loop...")
+            
+            # Start background thread to continuously listen for pool notifications
+            self._notification_thread_running = True
+            self._notification_thread = threading.Thread(target=self._listen_for_notifications, daemon=True)
+            self._notification_thread.start()
+            self.log.debug("Notification listener thread started")
+            
+            # Try to get initial notification with short timeout
+            # If we don't get one, the mining loop will wait for it
+            initial_notification_received = False
+            try:
+                self.log.debug("Waiting for initial mining.notify message from pool (5s timeout)")
+                # Temporarily set shorter timeout for initial notification
+                with self.pool._socket_lock:
+                    if self.pool.sock:
+                        original_timeout = self.pool.sock.gettimeout()
+                        self.pool.sock.settimeout(5.0)  # 5 second timeout
+                
+                responses = self.pool.read_notify()
+                
+                # Restore original timeout
+                with self.pool._socket_lock:
+                    if self.pool.sock:
+                        self.pool.sock.settimeout(original_timeout if original_timeout else self.pool.timeout)
+                
+                if responses and len(responses) > 0 and "params" in responses[0] and len(responses[0]["params"]) >= 9:
+                    with self.state._lock:
+                        (
+                            self.state.job_id,
+                            self.state.prev_hash,
+                            self.state.coinbase_part1,
+                            self.state.coinbase_part2,
+                            self.state.merkle_branch,
+                            self.state.version,
+                            self.state.nbits,
+                            self.state.ntime,
+                            self.state.clean_jobs,
+                        ) = responses[0]["params"]
+                        self.state.updated_prev_hash = self.state.prev_hash
+                    self.log.info(f"Received initial mining notification: job_id={self.state.job_id}")
+                    update_status("job_id", self.state.job_id)
+                    initial_notification_received = True
+            except (socket.timeout, ConnectionError) as e:
+                self.log.warning(f"Timeout waiting for initial notification: {e}. Mining loop will wait for notification.")
+                # Restore original timeout
+                with self.pool._socket_lock:
+                    if self.pool.sock:
+                        try:
+                            self.pool.sock.settimeout(self.pool.timeout)
+                        except:
+                            pass
+            except Exception as e:
+                self.log.warning(f"Error reading initial notification: {e}. Mining loop will wait for notification.")
+            
+            # Check if we have valid state data before starting mining loop
+            if not initial_notification_received:
+                with self.state._lock:
+                    has_valid_state = (
+                        self.state.nbits and 
+                        self.state.prev_hash and 
+                        self.state.extranonce1 and 
+                        self.state.extranonce2_size
+                    )
+                if not has_valid_state:
+                    self.log.info("No valid mining state yet, waiting for notification from pool...")
+                    # Wait a bit for notification thread to receive initial notification
+                    for _ in range(10):  # Wait up to 10 seconds
+                        time.sleep(1)
+                        with self.state._lock:
+                            if self.state.nbits and self.state.prev_hash:
+                                self.log.info("Received mining state from notification thread")
+                                break
+                    else:
+                        self.log.warning("No mining state received after waiting, starting mining loop anyway")
+            
+            self.log.info("Starting mining loop...")
             self.log.debug("Entering main mining loop")
             return self._mine_loop()
         except Exception as e:
@@ -462,6 +517,86 @@ class Miner:
             update_status("running", False)
             update_pool_status(False)
             raise
+
+    def _listen_for_notifications(self):
+        """Continuously listen for pool notifications in background thread"""
+        self.log.debug("Notification listener thread started")
+        while self._notification_thread_running and self._running:
+            try:
+                with self.pool._socket_lock:
+                    if self.pool.sock is None or self.pool.sock.fileno() == -1:
+                        # Socket not connected, wait and retry
+                        time.sleep(1)
+                        continue
+                    
+                    # Use select to check if data is available (non-blocking check)
+                    readable, _, _ = select.select([self.pool.sock], [], [], 1.0)
+                    if not readable:
+                        # No data available, continue loop
+                        continue
+                    
+                    # Data available, set short timeout for reading
+                    original_timeout = self.pool.sock.gettimeout()
+                    self.pool.sock.settimeout(2.0)  # 2 second timeout for non-blocking read
+                
+                # Read notification (outside lock to avoid blocking)
+                try:
+                    responses = self.pool.read_notify()
+                    
+                    # Restore original timeout (inside lock)
+                    with self.pool._socket_lock:
+                        if self.pool.sock:
+                            self.pool.sock.settimeout(original_timeout if original_timeout else self.pool.timeout)
+                    
+                    if responses and len(responses) > 0:
+                        for response in responses:
+                            if "params" in response and len(response["params"]) >= 9:
+                                # Process mining.notify message
+                                with self.state._lock:
+                                    (
+                                        self.state.job_id,
+                                        self.state.prev_hash,
+                                        self.state.coinbase_part1,
+                                        self.state.coinbase_part2,
+                                        self.state.merkle_branch,
+                                        self.state.version,
+                                        self.state.nbits,
+                                        self.state.ntime,
+                                        self.state.clean_jobs,
+                                    ) = response["params"]
+                                    self.state.updated_prev_hash = self.state.prev_hash
+                                
+                                self.log.info(f"Received mining notification: job_id={self.state.job_id}, prev_hash={self.state.prev_hash[:16]}...")
+                                update_status("job_id", self.state.job_id)
+                except (socket.timeout, ConnectionError) as e:
+                    # Timeout or connection error - this is OK, just continue listening
+                    self.log.debug(f"Notification read timeout/error (will retry): {e}")
+                    # Restore original timeout
+                    with self.pool._socket_lock:
+                        if self.pool.sock:
+                            try:
+                                self.pool.sock.settimeout(self.pool.timeout)
+                            except:
+                                pass
+                    time.sleep(0.5)
+                    continue
+                except Exception as e:
+                    self.log.warning(f"Error reading notification: {e}")
+                    # Restore original timeout
+                    with self.pool._socket_lock:
+                        if self.pool.sock:
+                            try:
+                                self.pool.sock.settimeout(self.pool.timeout)
+                            except:
+                                pass
+                    time.sleep(1)
+                    continue
+                    
+            except Exception as e:
+                self.log.error(f"Error in notification listener: {e}", exc_info=True)
+                time.sleep(1)
+        
+        self.log.debug("Notification listener thread stopped")
 
     def connect_to_pool_only(self):
         """Connect to pool, subscribe, and authorize without starting mining loop"""
@@ -583,6 +718,7 @@ class Miner:
                         update_status("running", False)
                         update_pool_status(False)
                         self._running = False
+                        self._notification_thread_running = False  # Stop notification thread
                         return
             except Exception as e:
                 self.log.error(f"Unexpected error in mining loop: {e}", exc_info=True)
@@ -592,6 +728,7 @@ class Miner:
                     update_status("running", False)
                     update_pool_status(False)
                     self._running = False
+                    self._notification_thread_running = False  # Stop notification thread
                     raise
                 time.sleep(restart_delay)
         
@@ -600,6 +737,7 @@ class Miner:
         update_status("running", False)
         update_pool_status(False)
         self._running = False
+        self._notification_thread_running = False  # Stop notification thread
 
     def _mine_loop_internal(self):
         """Internal mining loop implementation"""

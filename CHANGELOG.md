@@ -5,6 +5,32 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.4] - 2025-01-27
+
+### Fixed
+- **Critical: Pool Connection Timeout and Mining Loop Blocking**: Fixed issue where mining loop was blocked waiting for pool notifications
+  - `miner.start()` was blocking on `read_notify()` waiting for `mining.notify` message
+  - After 30 seconds timeout, connection would break and mining would never start
+  - Implemented background notification listener thread to continuously listen for pool notifications
+  - Mining loop now starts immediately even if initial notification is not received
+  - Notification thread updates state asynchronously when new blocks arrive
+  - Prevents "read_notify failed: timed out" errors that prevented mining from starting
+
+### Changed
+- **Asynchronous Notification Handling**: Improved pool notification processing
+  - Background thread continuously listens for `mining.notify` messages
+  - Mining loop no longer blocks waiting for notifications
+  - Initial notification wait reduced from 30 seconds to 5 seconds
+  - State updates happen asynchronously without blocking mining operations
+  - Better handling of pools that don't send immediate notifications after authorize
+
+### Technical Details
+- Added `_listen_for_notifications()` method that runs in background thread
+- Uses `select.select()` for non-blocking socket data availability checks
+- Short timeout (2 seconds) for notification reads to avoid blocking
+- Notification thread properly stops when miner is stopped
+- Thread-safe state updates with proper locking
+
 ## [2.25.3] - 2025-01-27
 
 ### Fixed

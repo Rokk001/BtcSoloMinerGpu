@@ -5,6 +5,15 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.8] - 2025-01-27
+
+### Fixed
+- **Critical: CPU Mining Hash Not Assigned**: Fixed issue where `hash_hex` and `nonce_hex` were not set from CPU mining results
+  - Code that assigns `hash_hex = cpu_hash_hex` was incorrectly placed inside `else:` block (only executed when CPU mining disabled)
+  - Moved hash assignment code outside of `if cpu_mining_enabled:` block so it always executes
+  - Prevents "hash_hex or nonce_hex not defined" error when CPU mining is enabled
+  - CPU mining now correctly sets `hash_hex` and `nonce_hex` for target comparison and share submission
+
 ## [2.25.7] - 2025-01-27
 
 ### Fixed

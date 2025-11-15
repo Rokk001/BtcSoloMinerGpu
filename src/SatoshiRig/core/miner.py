@@ -1243,22 +1243,23 @@ class Miner:
                     self.log.debug(f"CPU mining: DISABLED (iteration {hash_count})")
                 cpu_hash_hex = None
                 cpu_nonce_hex = None
-                
-                # If GPU didn't produce a hash, use CPU hash
-                if hash_hex is None:
-                    hash_hex = cpu_hash_hex
-                    nonce_hex = cpu_nonce_hex
-                # If both produced hashes, use the better one (lower value = better)
-                elif cpu_hash_hex is not None:
-                    try:
-                        if int(cpu_hash_hex, 16) < int(hash_hex, 16):
-                            hash_hex = cpu_hash_hex
-                            nonce_hex = cpu_nonce_hex
-                    except ValueError:
-                        # If comparison fails, use GPU hash (or CPU if GPU is None)
-                        if hash_hex is None:
-                            hash_hex = cpu_hash_hex
-                            nonce_hex = cpu_nonce_hex
+            
+            # If GPU didn't produce a hash, use CPU hash
+            # This code should run regardless of whether CPU mining is enabled or disabled
+            if hash_hex is None:
+                hash_hex = cpu_hash_hex
+                nonce_hex = cpu_nonce_hex
+            # If both produced hashes, use the better one (lower value = better)
+            elif cpu_hash_hex is not None:
+                try:
+                    if int(cpu_hash_hex, 16) < int(hash_hex, 16):
+                        hash_hex = cpu_hash_hex
+                        nonce_hex = cpu_nonce_hex
+                except ValueError:
+                    # If comparison fails, use GPU hash (or CPU if GPU is None)
+                    if hash_hex is None:
+                        hash_hex = cpu_hash_hex
+                        nonce_hex = cpu_nonce_hex
 
             # Update hash_count even if no mining was performed (#51)
             if hash_hex is None or nonce_hex is None:

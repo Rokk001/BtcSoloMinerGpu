@@ -2,7 +2,14 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.7)
+## Latest Changes (v2.25.8)
+- **Critical Fix: CPU Mining Hash Not Assigned**: Fixed issue where `hash_hex` and `nonce_hex` were not set from CPU mining results
+  - Code that assigns `hash_hex = cpu_hash_hex` was incorrectly placed inside `else:` block (only executed when CPU mining disabled)
+  - Moved hash assignment code outside of `if cpu_mining_enabled:` block so it always executes
+  - Prevents "hash_hex or nonce_hex not defined" error when CPU mining is enabled
+  - CPU mining now correctly sets `hash_hex` and `nonce_hex` for target comparison and share submission
+
+## Previous Changes (v2.25.7)
 - **Critical Syntax Fix**: Fixed `SyntaxError: f-string expression part cannot include a backslash` in `pool_client.py`
   - Changed `buffer.count(b'\n')` in f-string to use a variable instead
   - Python f-strings cannot contain backslashes directly in expressions

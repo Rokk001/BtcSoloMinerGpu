@@ -5,6 +5,25 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.23.0] - 2025-01-27
+
+### Fixed
+- **Critical: CUDA Initialization**: Fixed CUDA initialization error `module 'pycuda.driver' has no attribute 'is_initialized'`
+  - Replaced `cuda.is_initialized()` check with try/except pattern using `cuda.Device.count()`
+  - `is_initialized()` doesn't exist in all PyCUDA versions
+  - CUDA now initializes correctly on all PyCUDA versions
+- **Critical: Pool Subscribe JSON Error**: Fixed "Unterminated string" JSON decode error when pool response > 1024 bytes
+  - Changed from single `recv(1024)` to loop with multiple `recv(4096)` calls
+  - Reads until complete line (ending with `\n`) is received
+  - Handles large pool responses up to 64KB
+  - Prevents JSON decode errors from truncated responses
+
+### Changed
+- **Pool Subscribe**: Improved robustness for handling large pool responses
+  - Buffer-based reading with 64KB maximum size
+  - Automatic timeout handling
+  - Better error messages for connection issues
+
 ## [2.22.0] - 2025-01-27
 
 ### Removed

@@ -48,11 +48,31 @@ class PoolClient :
             raise RuntimeError("Socket not connected. Call connect() first.")
         try:
             self.sock.sendall(b'{"id": 1, "method": "mining.subscribe", "params": []}\n')
-            data = self.sock.recv(1024)
-            if not data:
-                raise ConnectionError("Connection closed by server during subscribe")
-            lines = data.decode('utf-8', errors='replace').split('\n')
+            
+            # Read response - may need multiple recv() calls for large responses
+            # Pool responses can be > 1024 bytes, so we need to read until we get a complete line
+            buffer = bytearray()
+            max_buffer_size = 64 * 1024  # 64KB max
+            self.sock.settimeout(self.timeout)
+            
+            while True:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    raise ConnectionError("Connection closed by server during subscribe")
+                buffer.extend(chunk)
+                
+                # Check if we have a complete line (ends with \n)
+                if b'\n' in buffer:
+                    break
+                
+                # Prevent buffer overflow
+                if len(buffer) > max_buffer_size:
+                    raise RuntimeError(f"Subscribe response too large (>{max_buffer_size} bytes)")
+            
+            # Decode and parse first line
+            lines = buffer.decode('utf-8', errors='replace').split('\n')
             response = json.loads(lines[0])
+            
             if 'result' not in response:
                 raise RuntimeError(f"Invalid subscribe response: missing 'result' field: {response}")
             subscription_details , extranonce1 , extranonce2_size = response['result']

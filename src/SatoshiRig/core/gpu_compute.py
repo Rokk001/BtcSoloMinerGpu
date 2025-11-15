@@ -238,12 +238,18 @@ class CUDAMiner:
         
         try:
             # Initialize CUDA (equivalent to pycuda.autoinit, but only when needed)
-            # This allows the module to be imported even if CUDA is not available at import time
-            if not cuda.is_initialized():
+            # Try to get device count - if it fails, CUDA is not initialized
+            # Note: cuda.is_initialized() doesn't exist in all PyCUDA versions, so we use try/except
+            try:
+                device_count = cuda.Device.count()
+            except RuntimeError:
+                # CUDA not initialized, initialize it
                 cuda.init()
-            self.log.debug(f"CUDA initialized, device count: {cuda.Device.count()}")
+                device_count = cuda.Device.count()
             
-            if cuda.Device.count() == 0:
+            self.log.debug(f"CUDA initialized, device count: {device_count}")
+            
+            if device_count == 0:
                 raise RuntimeError("No CUDA devices found. Make sure NVIDIA GPU is available and container is run with --runtime=nvidia or --gpus")
             
             if device_id >= cuda.Device.count():

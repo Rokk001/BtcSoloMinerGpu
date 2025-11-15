@@ -2,7 +2,16 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.22.0)
+## Latest Changes (v2.23.0)
+- **Critical CUDA Fix**: Fixed CUDA initialization error
+  - Replaced `cuda.is_initialized()` with try/except pattern (function doesn't exist in all PyCUDA versions)
+  - CUDA now initializes correctly on all PyCUDA versions
+- **Critical Pool Connection Fix**: Fixed JSON decode error when pool response is > 1024 bytes
+  - Changed from single `recv(1024)` to loop with multiple `recv(4096)` calls
+  - Reads until complete line is received (handles responses up to 64KB)
+  - Pool connection should now work reliably even with large responses
+
+## Previous Changes (v2.22.0)
 - **UI Improvements**: Removed export button from web dashboard
   - Export functionality was not needed, removed to simplify UI
 - **Pool Connection Independence**: Pool connection is now established independently of mining

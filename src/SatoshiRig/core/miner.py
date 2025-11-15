@@ -14,9 +14,9 @@ from .state import MinerState
 
 # Initialize logger
 logging.basicConfig(
-    filename='logs/mining.log',
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]  # Log to stdout/stderr for Docker logs
 )
 
 try:

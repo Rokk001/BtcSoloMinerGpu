@@ -1181,9 +1181,11 @@ def set_miner(miner):
 
 
 def update_logging_level(log_level: str, log_file: str = None):
-    """Update logging level dynamically at runtime"""
+    """Update logging level dynamically at runtime
+    
+    Note: log_file parameter is ignored - all logs go to stdout/stderr for Docker logs
+    """
     import logging
-    import os
     
     # Convert string level to logging constant
     level_map = {
@@ -1213,55 +1215,23 @@ def update_logging_level(log_level: str, log_file: str = None):
     if _miner and hasattr(_miner, 'log'):
         _miner.log.setLevel(level)
     
-    # Update file handler if log_file is specified
-    if log_file:
-        # Ensure log directory exists
-        log_dir = os.path.dirname(log_file) if os.path.dirname(log_file) else None
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-        
-        # Convert to absolute path if relative
-        if not os.path.isabs(log_file):
-            log_file = os.path.join(os.getcwd(), log_file)
-        
-        # Remove existing file handlers and add new one
-        root_logger = logging.getLogger()
-        for handler in root_logger.handlers[:]:
-            if isinstance(handler, logging.FileHandler):
-                handler.close()
-                root_logger.removeHandler(handler)
-        
-        # Add new file handler
-        try:
-            file_handler = logging.FileHandler(log_file, mode='a')
-            file_handler.setLevel(level)
-            file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
-            root_logger.addHandler(file_handler)
-        except Exception as e:
-            web_logger.warning(f"Failed to create file handler for {log_file}: {e}")
+    # Remove any existing file handlers (we only want stdout/stderr for Docker logs)
+    for handler in root_logger.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
+            root_logger.removeHandler(handler)
+    
+    # Ensure we have a StreamHandler for stdout/stderr
+    has_stream_handler = any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers)
+    if not has_stream_handler:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(level)
+        stream_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
+        root_logger.addHandler(stream_handler)
     
     # Update all handlers to the new level
     for handler in root_logger.handlers:
         handler.setLevel(level)
-    
-    # If log file is specified and different, reconfigure handlers
-    if log_file:
-        # Remove existing file handlers
-        for handler in list(root_logger.handlers):
-            if isinstance(handler, logging.FileHandler):
-                root_logger.removeHandler(handler)
-                handler.close()
-        
-        # Add new file handler if log file is specified
-        try:
-            file_handler = logging.FileHandler(log_file, mode='a')
-            file_handler.setLevel(level)
-            file_handler.setFormatter(
-                logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s')
-            )
-            root_logger.addHandler(file_handler)
-        except Exception as e:
-            web_logger.warning(f"Failed to create file handler for {log_file}: {e}")
 
 
 def set_config(config: dict):

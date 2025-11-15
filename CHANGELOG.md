@@ -5,6 +5,18 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.3] - 2025-01-XX
+
+### Changed
+- **Logging to Docker Logs**: All logging now goes to stdout/stderr instead of separate log files
+  - Logs are now visible in `docker logs` command
+  - No separate log files are created
+  - Log level configuration in web UI still works, but only affects stdout/stderr output
+  - Removed all `FileHandler` usage in favor of `StreamHandler` for better Docker integration
+
+### Removed
+- Separate log file output - all logs now go to Docker stdout/stderr
+
 ## [2.19.2] - 2025-01-XX
 
 ### Fixed
@@ -191,6 +203,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[2.19.3]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.3
 [2.19.2]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.2
 [2.19.1]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.1
 [2.19.0]: https://github.com/Rokk001/SatoshiRig/releases/tag/v2.19.0

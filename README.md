@@ -65,7 +65,7 @@ SatoshiRig is a professional Bitcoin solo-mining client designed for simplicity,
 ### Developer Experience
 - 🔧 **Database Configuration**: All settings stored in SQLite database, manageable via web UI
 - 🐳 **Docker Support**: Pre-built images on GitHub Container Registry
-- 📝 **Comprehensive Logging**: Configurable log levels and file output
+- 📝 **Comprehensive Logging**: Configurable log levels with Docker logs integration (stdout/stderr)
 - 🚀 **CI/CD Ready**: Automated builds and releases
 
 ---
@@ -156,8 +156,7 @@ All configuration can be done via environment variables:
 | `WEB_PORT` | No | `5000` | Web dashboard port (set to `0` to disable) |
 | `STATE_DB` | No | `./data/state.db` | Path to the SQLite database used for dynamic settings and statistics |
 | `CORS_ORIGINS` | No | `http://localhost:5000,http://127.0.0.1:5000` | Comma-separated list of allowed CORS origins, or `*` to allow all origins (less secure) |
-| `LOG_FILE` | No | `miner.log` | Log file path (relative to working directory) |
-| `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (logs go to stdout/stderr for Docker logs) |
 | `NVIDIA_VISIBLE_DEVICES` | No* | `all` | NVIDIA GPU visibility (*only for NVIDIA GPU) |
 | `NVIDIA_DRIVER_CAPABILITIES` | No* | `compute,utility` | NVIDIA driver capabilities (*only for NVIDIA GPU) |
 

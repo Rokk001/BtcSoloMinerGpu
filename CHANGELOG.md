@@ -5,6 +5,21 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.3] - 2025-01-27
+
+### Fixed
+- **Critical: Race Condition in Pool Connection Startup**: Fixed timeout when `miner.start()` and `connect_to_pool_only()` run simultaneously
+  - `miner.start()` now checks if pool is already connected before attempting new connection
+  - Reuses existing connection and subscription if available (from `connect_to_pool_only()`)
+  - Prevents "Subscribe failed: timed out" errors when starting miner after pool connection is established
+  - Eliminates duplicate connection attempts that caused socket conflicts
+
+### Changed
+- **Pool Connection Reuse**: Improved connection handling in `miner.start()`
+  - Checks for existing socket and subscription before connecting
+  - Reuses existing connection when available, avoiding unnecessary reconnection
+  - Better error handling and logging for connection state validation
+
 ## [2.25.2] - 2025-01-27
 
 ### Fixed

@@ -2,7 +2,18 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.2)
+## Latest Changes (v2.25.3)
+- **Critical Race Condition Fix**: Fixed timeout when `miner.start()` and `connect_to_pool_only()` run simultaneously
+  - `miner.start()` now checks if pool is already connected before attempting new connection
+  - Reuses existing connection and subscription if available (from `connect_to_pool_only()`)
+  - Prevents "Subscribe failed: timed out" errors when starting miner after pool connection is established
+  - Eliminates duplicate connection attempts that caused socket conflicts
+- **Pool Connection Reuse**: Improved connection handling in `miner.start()`
+  - Checks for existing socket and subscription before connecting
+  - Reuses existing connection when available, avoiding unnecessary reconnection
+  - Better error handling and logging for connection state validation
+
+## Previous Changes (v2.25.2)
 - **Pool Status Dashboard Fix**: Fixed pool connection status not updating immediately in web dashboard
   - `update_pool_status()` now sends immediate SocketIO notification to frontend
   - Dashboard shows correct connection status in real-time instead of waiting 2-3 seconds

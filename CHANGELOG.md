@@ -5,6 +5,29 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.22.0] - 2025-01-27
+
+### Removed
+- **Export Button**: Removed export statistics button from web dashboard
+  - Removed `/export` API endpoint
+  - Removed `exportStats()` JavaScript function
+  - Removed export button from UI header
+
+### Added
+- **Independent Pool Connection**: Pool connection is now established independently of mining
+  - New `connect_to_pool_only()` method in Miner class
+  - Connects to pool, subscribes, and authorizes without starting mining loop
+  - Pool connection is automatically established when:
+    - Application starts (if wallet is configured)
+    - Miner is initialized via web UI
+    - Pool configuration is changed
+
+### Changed
+- **Pool Connection Behavior**: Pool connection is now maintained even when mining is paused or not active
+  - Pool status is visible in dashboard regardless of mining state
+  - Connection is automatically re-established after pool configuration changes
+  - Better user experience: users can see pool connection status without starting mining
+
 ## [2.21.0] - 2025-01-27
 
 ### Fixed

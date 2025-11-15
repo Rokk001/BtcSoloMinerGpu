@@ -311,17 +311,6 @@ def index():
     return render_template_string(INDEX_HTML)
 
 
-@app.route("/export")
-def export_stats():
-    """Export statistics as JSON"""
-    stats = get_status()
-    return Response(
-        json.dumps(stats, indent=2),
-        mimetype="application/json",
-        headers={"Content-Disposition": "attachment; filename=satoshirig-stats.json"},
-    )
-
-
 @app.route("/api/stop", methods=["POST"])
 def stop_mining():
     """Stop mining by setting shutdown flag"""
@@ -451,6 +440,15 @@ def start_mining():
                 
                 set_miner(miner)
                 set_miner_state(miner_state)
+                
+                # Connect to pool first (without starting mining)
+                try:
+                    connect_thread = threading.Thread(target=miner.connect_to_pool_only, daemon=True)
+                    connect_thread.start()
+                    # Wait a bit for connection to establish
+                    connect_thread.join(timeout=5)
+                except Exception as connect_error:
+                    logger.warning(f"Failed to connect to pool: {connect_error}")
                 
                 # Start miner in background thread
                 miner_thread = threading.Thread(target=miner.start, daemon=True)
@@ -760,6 +758,19 @@ def save_config_api():
                     logger.info(f"Wallet address configured, attempting to auto-start miner...")
                     # Try to start miner (will be handled by /api/start if user clicks start button)
                     # We don't auto-start here to avoid starting miner without user consent
+                
+                # If miner exists and pool config changed, reconnect to pool
+                if _miner and wallet:
+                    try:
+                        # Update pool client with new config
+                        _miner.pool.host = saved_config["pool"]["host"]
+                        _miner.pool.port = int(saved_config["pool"]["port"])
+                        # Connect to pool (without starting mining) in background thread
+                        connect_thread = threading.Thread(target=_miner.connect_to_pool_only, daemon=True)
+                        connect_thread.start()
+                        logger.info("Pool connection re-established after config change")
+                    except Exception as pool_connect_error:
+                        logger.warning(f"Failed to reconnect to pool after config change: {pool_connect_error}")
             except Exception as e:
                 logger.warning(f"Could not reload config after save: {e}")
                 set_config(full_config)
@@ -2070,7 +2081,6 @@ INDEX_HTML = """
             <h1>SatoshiRig Status Dashboard</h1>
             <div class="controls">
                 <button class="btn" onclick="toggleTheme()" id="themeToggle">🌓 Theme</button>
-                <button class="btn" onclick="exportStats()">📥 Export</button>
                 <button class="btn" onclick="toggleMining()">
                     <span id="autoRefreshText">⏸️ Pause</span>
                 </button>
@@ -2696,10 +2706,6 @@ INDEX_HTML = """
             }
         }
         
-        function exportStats() {
-            window.location.href = '/export';
-        }
-
         let miningPaused = false;
 
         function toggleMining() {

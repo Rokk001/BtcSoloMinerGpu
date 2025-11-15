@@ -130,6 +130,16 @@ def main() :
             latest_block_url = network_config.get("latest_block_url" , "https://blockchain.info/latestblock")
             explorer_base = latest_block_url.rsplit("/" , 1)[0]
         update_status("explorer_url" , f"{explorer_base}/address/{wallet}")
+        
+        # Connect to pool automatically (without starting mining) if wallet is configured
+        if wallet:
+            try:
+                import threading
+                connect_thread = threading.Thread(target=miner.connect_to_pool_only, daemon=True)
+                connect_thread.start()
+                logger.info("Pool connection initiated (mining not started)")
+            except Exception as connect_error:
+                logger.warning(f"Failed to connect to pool on startup: {connect_error}")
         web_thread = threading.Thread(target = start_web_server , args = ("0.0.0.0" , web_port) , daemon = True)
         web_thread.start()
         logger.info("Web dashboard started on port %s" , web_port)

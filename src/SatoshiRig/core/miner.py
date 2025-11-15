@@ -439,6 +439,42 @@ class Miner:
             update_pool_status(False)
             raise
 
+    def connect_to_pool_only(self):
+        """Connect to pool, subscribe, and authorize without starting mining loop"""
+        try:
+            self.log.info("Connecting to pool %s:%s...", self.pool.host, self.pool.port)
+            self.log.debug(f"Pool connection parameters: host={self.pool.host}, port={self.pool.port}")
+            
+            # Close existing connection if any
+            if self.pool.sock:
+                try:
+                    self.pool.close()
+                except Exception:
+                    pass
+            
+            self.pool.connect()
+            self.log.info("Connected to pool, subscribing...")
+            self.log.debug("Sending subscription request to pool")
+            update_pool_status(True, self.pool.host, self.pool.port)
+            
+            sub_details, extranonce1, extranonce2_size = self.pool.subscribe()
+            self.log.debug(f"Subscription response: extranonce1={extranonce1}, extranonce2_size={extranonce2_size}")
+            with self.state._lock:
+                self.state.subscription_details = sub_details
+                self.state.extranonce1 = extranonce1
+                self.state.extranonce2_size = extranonce2_size
+            
+            self.log.info("Subscribed to pool, authorizing...")
+            self.log.debug(f"Authorizing with wallet: {self.wallet[:10]}...")
+            self.pool.authorize(self.wallet)
+            self.log.info("Authorized with pool (connection established, mining not started)")
+            
+            return True
+        except Exception as e:
+            self.log.error(f"Failed to connect to pool: {e}", exc_info=True)
+            update_pool_status(False)
+            return False
+
     def _mine_loop(self):
         """Main mining loop - wrapped in retry logic to handle transient errors"""
         restart_delay = self.cfg.get("miner", {}).get("restart_delay_secs", 2)

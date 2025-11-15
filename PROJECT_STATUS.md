@@ -2,7 +2,19 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.21.0)
+## Latest Changes (v2.22.0)
+- **UI Improvements**: Removed export button from web dashboard
+  - Export functionality was not needed, removed to simplify UI
+- **Pool Connection Independence**: Pool connection is now established independently of mining
+  - New `connect_to_pool_only()` method allows connecting to pool without starting mining
+  - Pool connection is automatically established:
+    - On application startup (if wallet is configured)
+    - When miner is initialized via web UI
+    - After pool configuration changes
+  - Pool status is now visible in dashboard even when mining is not active
+  - Better user experience: users can verify pool connectivity without starting mining
+
+## Previous Changes (v2.21.0)
 - **Critical Share Submission Fixes**: Fixed multiple critical bugs that prevented valid shares from being accepted
   - **Syntax Error Fix**: Fixed Python syntax error in GPU mining try-except block (corrected indentation)
   - **Bug #73 - extranonce2**: Fixed incorrect `extranonce2` value in share submission - now uses value from current iteration instead of stale state value

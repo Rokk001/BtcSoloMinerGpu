@@ -762,13 +762,17 @@ def save_config_api():
                 # If miner exists and pool config changed, reconnect to pool
                 if _miner and wallet:
                     try:
-                        # Update pool client with new config
-                        _miner.pool.host = saved_config["pool"]["host"]
-                        _miner.pool.port = int(saved_config["pool"]["port"])
-                        # Connect to pool (without starting mining) in background thread
-                        connect_thread = threading.Thread(target=_miner.connect_to_pool_only, daemon=True)
-                        connect_thread.start()
-                        logger.info("Pool connection re-established after config change")
+                        # Only reconnect if miner is not running (to avoid race condition)
+                        if not _miner._running:
+                            # Update pool client with new config
+                            _miner.pool.host = saved_config["pool"]["host"]
+                            _miner.pool.port = int(saved_config["pool"]["port"])
+                            # Connect to pool (without starting mining) in background thread
+                            connect_thread = threading.Thread(target=_miner.connect_to_pool_only, daemon=True)
+                            connect_thread.start()
+                            logger.info("Pool connection re-established after config change")
+                        else:
+                            logger.debug("Miner is running, pool connection is already established - skipping reconnect to avoid interference")
                     except Exception as pool_connect_error:
                         logger.warning(f"Failed to reconnect to pool after config change: {pool_connect_error}")
             except Exception as e:

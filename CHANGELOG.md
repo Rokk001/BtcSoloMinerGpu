@@ -5,6 +5,26 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.0] - 2025-01-27
+
+### Fixed
+- **Critical: Race Condition in Pool Connection**: Fixed race condition between `connect_to_pool_only()` and running miner
+  - `connect_to_pool_only()` was closing socket while miner was using it, causing timeouts
+  - Added thread-safety with `_socket_lock` in `PoolClient` for all socket operations
+  - `connect_to_pool_only()` now checks if miner is running before attempting reconnection
+  - Prevents "Subscribe failed: timed out" errors when config is changed during mining
+- **Thread-Safety for Socket Operations**: All pool socket operations are now thread-safe
+  - Added `_socket_lock` to `PoolClient` class
+  - All methods (`connect`, `subscribe`, `authorize`, `read_notify`, `submit`, `close`) now use lock
+  - Prevents concurrent socket access conflicts
+
+### Changed
+- **Pool Connection Logic**: Improved pool connection handling
+  - `connect_to_pool_only()` skips reconnection if miner is already running
+  - Web UI no longer calls `connect_to_pool_only()` when miner is running
+  - Better error handling and logging for connection state checks
+  - Socket state validation before attempting reconnection
+
 ## [2.24.0] - 2025-01-27
 
 ### Fixed

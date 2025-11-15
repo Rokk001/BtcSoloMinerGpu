@@ -2,7 +2,22 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.24.0)
+## Latest Changes (v2.25.0)
+- **Critical Race Condition Fix**: Fixed race condition between pool connection and running miner
+  - `connect_to_pool_only()` was closing socket while miner was using it, causing timeouts
+  - Added thread-safety with `_socket_lock` in `PoolClient` for all socket operations
+  - `connect_to_pool_only()` now checks if miner is running before attempting reconnection
+  - Prevents "Subscribe failed: timed out" errors when config is changed during mining
+- **Thread-Safety Improvements**: All pool socket operations are now thread-safe
+  - Added `_socket_lock` to `PoolClient` class
+  - All methods (`connect`, `subscribe`, `authorize`, `read_notify`, `submit`, `close`) now use lock
+  - Prevents concurrent socket access conflicts
+- **Pool Connection Logic**: Improved pool connection handling
+  - `connect_to_pool_only()` skips reconnection if miner is already running
+  - Web UI no longer calls `connect_to_pool_only()` when miner is running
+  - Better error handling and logging for connection state checks
+
+## Previous Changes (v2.24.0)
 - **Critical Pool Subscribe Fix**: Fixed issue where pool sends multiple messages in same buffer
   - Pool may send `mining.notify` message immediately after `mining.subscribe` response
   - Code now searches through all received lines to find the correct subscribe response

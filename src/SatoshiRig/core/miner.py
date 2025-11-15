@@ -2,6 +2,7 @@ import binascii
 import hashlib
 import logging
 import random
+import select
 import threading
 import time
 from datetime import datetime
@@ -442,15 +443,40 @@ class Miner:
     def connect_to_pool_only(self):
         """Connect to pool, subscribe, and authorize without starting mining loop"""
         try:
+            # Check if miner is already running - if so, don't interfere with existing connection
+            if self._running:
+                self.log.debug("Miner is already running, pool connection is already established - skipping connect_to_pool_only")
+                # Check if socket is still connected
+                with self.pool._socket_lock:
+                    if self.pool.sock:
+                        try:
+                            # Quick check if socket is still alive
+                            self.pool.sock.settimeout(0.1)
+                            # Try to peek at socket (non-blocking)
+                            readable, _, _ = select.select([self.pool.sock], [], [], 0.1)
+                            if readable or self.pool.sock.fileno() != -1:
+                                self.log.debug("Pool connection is already established and active")
+                                update_pool_status(True, self.pool.host, self.pool.port)
+                                return True
+                        except Exception:
+                            # Socket might be dead, continue to reconnect
+                            pass
+                # If we get here, socket might be dead, but miner is running
+                # Don't interfere - let the miner handle reconnection
+                self.log.warning("Miner is running but socket check failed - not reconnecting to avoid interference")
+                return False
+            
             self.log.info("Connecting to pool %s:%s...", self.pool.host, self.pool.port)
             self.log.debug(f"Pool connection parameters: host={self.pool.host}, port={self.pool.port}")
             
-            # Close existing connection if any
-            if self.pool.sock:
-                try:
-                    self.pool.close()
-                except Exception:
-                    pass
+            # Close existing connection if any (only if miner is not running)
+            with self.pool._socket_lock:
+                if self.pool.sock:
+                    try:
+                        self.pool.sock.close()
+                        self.pool.sock = None
+                    except Exception:
+                        pass
             
             self.pool.connect()
             self.log.info("Connected to pool, subscribing...")

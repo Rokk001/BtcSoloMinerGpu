@@ -5,6 +5,18 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.11] - 2025-01-27
+
+### Fixed
+- **Critical: Mining Loop Progress**: Fixed two cases where `hash_count` was not incremented before `continue`
+  - When `hash_hex` contains invalid hex format (ValueError), `hash_count` is now incremented before continuing
+  - When `this_hash_int == 0` (zero hash), `hash_count` is now incremented before continuing
+  - Prevents mining loop from getting stuck when encountering invalid hash values
+  - Ensures continuous loop progression and accurate hash rate calculation
+- **Code Cleanup**: Removed duplicate hash rate calculation that was performed twice per iteration
+  - Hash rate is now calculated once per iteration (before hash validation)
+  - Improves performance and reduces redundant calculations
+
 ## [2.25.10] - 2025-01-27
 
 ### Fixed

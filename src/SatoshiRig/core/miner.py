@@ -1319,6 +1319,7 @@ class Miner:
                 self.log.error(
                     f"Invalid hash_hex format: {hash_hex[:50]}... Error: {e}"
                 )
+                hash_count += 1
                 continue
 
             # Prevent division by zero (hash_hex could be all zeros)
@@ -1326,6 +1327,7 @@ class Miner:
                 self.log.warning(
                     f"Hash is zero, skipping difficulty calculation: {hash_hex}"
                 )
+                hash_count += 1
                 continue
 
             # Bitcoin reference difficulty: 0x00000000FFFF0000000000000000000000000000000000000000000000000000
@@ -1347,14 +1349,6 @@ class Miner:
                         difficulty
                     )
                 update_status("best_difficulty", difficulty)
-
-            elapsed = time.time() - start_time
-            if elapsed > 0:
-                hash_rate = hash_count / elapsed
-                update_status("hash_rate", hash_rate)
-                # Log hash rate every 1000 hashes in DEBUG mode
-                if hash_count % 1000 == 0:
-                    self.log.debug(f"Hash rate: {hash_rate:.2f} H/s, total hashes: {hash_count}, elapsed: {elapsed:.2f}s")
 
             # Validate hash_hex and target lengths before comparison
             if len(hash_hex) != 64:

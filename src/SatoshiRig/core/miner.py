@@ -53,6 +53,9 @@ class Miner:
         self.gpu_nonce_counter = (
             0  # Counter for sequential nonce generation in GPU mode
         )
+        self.cpu_nonce_counter = (
+            0  # Counter for sequential nonce generation in CPU mode
+        )
         self._config_lock = threading.Lock()  # Lock for thread-safe config access
         self._running = False  # Flag to prevent multiple calls to start()
 
@@ -259,6 +262,55 @@ class Miner:
                 raise last_error
             raise RuntimeError("Failed to get block height: unknown error")
 
+    def _hex_to_little_endian(self, hex_str: str, expected_length: int) -> str:
+        """
+        Convert hex string to little-endian format for Bitcoin block headers.
+        Bitcoin uses little-endian byte order for all fields in the block header.
+        
+        Args:
+            hex_str: Hex string (may be in big-endian or little-endian)
+            expected_length: Expected length in hex characters (must be even)
+        
+        Returns:
+            Hex string in little-endian format
+        """
+        if not hex_str:
+            return "0" * expected_length
+        
+        hex_str = hex_str.strip()
+        
+        # Pad to expected length
+        if len(hex_str) < expected_length:
+            hex_str = hex_str.zfill(expected_length)
+        elif len(hex_str) > expected_length:
+            hex_str = hex_str[:expected_length]
+        
+        # Convert to little-endian: reverse byte order (not bit order)
+        # Each byte is 2 hex characters
+        if len(hex_str) % 2 != 0:
+            raise ValueError(f"Hex string length must be even: {len(hex_str)}")
+        
+        # Reverse byte order: "ABCDEF" -> "EFCDAB" (each pair is a byte)
+        bytes_list = [hex_str[i:i+2] for i in range(0, len(hex_str), 2)]
+        return "".join(reversed(bytes_list))
+    
+    def _int_to_little_endian_hex(self, value: int, byte_length: int) -> str:
+        """
+        Convert integer to little-endian hex string.
+        
+        Args:
+            value: Integer value
+            byte_length: Number of bytes (hex length will be byte_length * 2)
+        
+        Returns:
+            Hex string in little-endian format
+        """
+        # Convert to hex and pad to correct length
+        hex_str = f"{value:0{byte_length * 2}x}"
+        # Reverse byte order for little-endian
+        bytes_list = [hex_str[i:i+2] for i in range(0, len(hex_str), 2)]
+        return "".join(reversed(bytes_list))
+    
     def _build_block_header(self, prev_hash, merkle_root, ntime, nbits, nonce_hex):
         # Validate all required fields
         with self.state._lock:
@@ -292,15 +344,41 @@ class Miner:
                 f"Missing required fields for block header: {', '.join(missing)}"
             )
 
-        return (
-            version
-            + prev_hash
-            + merkle_root
-            + ntime
-            + nbits
-            + nonce_hex
-            + "000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000"
-        )
+        # Bitcoin block header is exactly 80 bytes (160 hex chars):
+        # - version: 4 bytes (8 hex chars) - little-endian
+        # - prev_hash: 32 bytes (64 hex chars) - little-endian
+        # - merkle_root: 32 bytes (64 hex chars) - little-endian
+        # - ntime: 4 bytes (8 hex chars) - little-endian
+        # - nbits: 4 bytes (8 hex chars) - little-endian
+        # - nonce: 4 bytes (8 hex chars) - little-endian
+        # Total: 80 bytes = 160 hex chars
+        
+        # Convert all fields to little-endian format (Bitcoin standard)
+        # Pool may send fields in big-endian, so we need to convert
+        version = self._hex_to_little_endian(version.strip() if version else "", 8)
+        prev_hash = self._hex_to_little_endian(prev_hash.strip() if prev_hash else "", 64)
+        merkle_root = self._hex_to_little_endian(merkle_root.strip() if merkle_root else "", 64)
+        ntime = self._hex_to_little_endian(ntime.strip() if ntime else "", 8)
+        nbits = self._hex_to_little_endian(nbits.strip() if nbits else "", 8)
+        nonce_hex = self._hex_to_little_endian(nonce_hex.strip() if nonce_hex else "", 8)
+        
+        # Log field lengths for debugging
+        self.log.debug(f"Block header field lengths: version={len(version)}, prev_hash={len(prev_hash)}, merkle_root={len(merkle_root)}, ntime={len(ntime)}, nbits={len(nbits)}, nonce_hex={len(nonce_hex)}")
+        
+        # Final validation
+        if len(version) != 8 or len(prev_hash) != 64 or len(merkle_root) != 64 or len(ntime) != 8 or len(nbits) != 8 or len(nonce_hex) != 8:
+            self.log.error(f"Invalid block header field lengths after conversion: version={len(version)}, prev_hash={len(prev_hash)}, merkle_root={len(merkle_root)}, ntime={len(ntime)}, nbits={len(nbits)}, nonce_hex={len(nonce_hex)}")
+            raise RuntimeError("Invalid block header field lengths after conversion")
+        
+        block_header = version + prev_hash + merkle_root + ntime + nbits + nonce_hex
+        
+        # Validate total length
+        if len(block_header) != 160:
+            self.log.error(f"Invalid block header total length: {len(block_header)} (expected 160 hex chars = 80 bytes)")
+            raise RuntimeError(f"Invalid block header length: {len(block_header)}")
+        
+        self.log.debug(f"Block header built successfully: length={len(block_header)}")
+        return block_header
 
     def start(self):
         # Prevent multiple calls to start()
@@ -389,7 +467,9 @@ class Miner:
                         if self.pool.sock:
                             try:
                                 self.pool.close()
-                            except:
+                            except (Exception, OSError, ConnectionError) as close_error:
+                                # Ignore errors when closing socket during reconnection
+                                self.log.debug(f"Error closing socket during reconnection: {close_error}")
                                 pass
                         self.pool.connect()
                         update_pool_status(True, self.pool.host, self.pool.port)
@@ -471,8 +551,9 @@ class Miner:
             self.log.error(f"Failed to convert target to int: {e}")
             raise RuntimeError(f"Invalid target value: {target}")
 
+        # Bitcoin reference difficulty: 0x00000000FFFF0000000000000000000000000000000000000000000000000000
         reference_diff = int(
-            "00000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF", 16
+            "00000000FFFF0000000000000000000000000000000000000000000000000000", 16
         )
         if target_int > 0:
             target_difficulty = reference_diff / target_int
@@ -482,54 +563,16 @@ class Miner:
             self.log.error(f"Invalid extranonce2_size: {extranonce2_size}, waiting for valid data from pool...")
             raise RuntimeError(f"Invalid extranonce2_size: {extranonce2_size}")
 
-        extranonce2 = hex(random.getrandbits(32))[2:].zfill(2 * extranonce2_size)
-        self.log.debug(f"Generated extranonce2: {extranonce2}")
+        # Initialize extranonce2 counter if not exists (sequential generation)
+        if not hasattr(self, 'extranonce2_counter'):
+            self.extranonce2_counter = 0
+        
+        # Generate extranonce2 sequentially (not randomly) for better coverage
+        extranonce2 = hex(self.extranonce2_counter)[2:].zfill(2 * extranonce2_size)
+        self.extranonce2_counter = (self.extranonce2_counter + 1) % (2**(8 * extranonce2_size))
+        self.log.debug(f"Generated extranonce2 (sequential): {extranonce2}")
         with self.state._lock:
             self.state.extranonce2 = extranonce2
-
-        with self.state._lock:
-            coinbase_part1 = self.state.coinbase_part1
-            extranonce1 = self.state.extranonce1
-            coinbase_part2 = self.state.coinbase_part2
-            merkle_branch = self.state.merkle_branch
-
-        # Validate required fields before building coinbase
-        if not coinbase_part1 or not extranonce1 or not coinbase_part2:
-            self.log.error(
-                f"Missing required coinbase fields: coinbase_part1={coinbase_part1 is not None}, extranonce1={extranonce1 is not None}, coinbase_part2={coinbase_part2 is not None}. Waiting for pool notification..."
-            )
-            raise RuntimeError(
-                "Missing required coinbase fields. Pool may not have sent complete mining notification."
-            )
-
-        coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
-        self.log.debug(f"Built coinbase: length={len(coinbase)}, extranonce1={extranonce1}, extranonce2={extranonce2}")
-        coinbase_hash_bin = hashlib.sha256(
-            hashlib.sha256(binascii.unhexlify(coinbase)).digest()
-        ).digest()
-
-        merkle_root = coinbase_hash_bin
-        if merkle_branch:
-            self.log.debug(f"Computing merkle root with {len(merkle_branch)} branch hashes")
-            for branch_hash in merkle_branch:
-                merkle_root = hashlib.sha256(
-                    hashlib.sha256(
-                        merkle_root + binascii.unhexlify(branch_hash)
-                    ).digest()
-                ).digest()
-
-        merkle_root = binascii.hexlify(merkle_root).decode()
-        self.log.debug(f"Computed merkle_root: {merkle_root[:32]}...")
-        # Reverse byte order (little-endian to big-endian) - ensure even length
-        if len(merkle_root) % 2 != 0:
-            self.log.error(f"Invalid merkle_root hex length: {len(merkle_root)}")
-            raise RuntimeError(f"Invalid merkle_root hex length: {len(merkle_root)}")
-        merkle_root = "".join(
-            [
-                merkle_root[i] + merkle_root[i + 1]
-                for i in range(0, len(merkle_root), 2)
-            ][::-1]
-        )
 
         # Get current height with timeout handling to prevent blocking
         try:
@@ -556,6 +599,13 @@ class Miner:
         self.log.debug(f"Hash log prefix zeros: {len(prefix_zeros)} (will log hashes starting with {prefix_zeros})")
         hash_count = 0
         start_time = time.time()
+        
+        # Log mining configuration
+        with self._config_lock:
+            cpu_mining_enabled = self.cfg.get("compute", {}).get("cpu_mining_enabled", True)
+            gpu_mining_enabled = self.cfg.get("compute", {}).get("gpu_mining_enabled", False)
+        self.log.info(f"Mining configuration: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner available={self.gpu_miner is not None}")
+        
         self.log.debug("Starting hash computation loop")
 
         while True:
@@ -602,8 +652,24 @@ class Miner:
                         and "params" in responses[0]
                         and len(responses[0]["params"]) > 0
                     ):
+                        # Update ALL fields from new block notification, not just job_id
                         with self.state._lock:
-                            self.state.job_id = responses[0]["params"][0]
+                            if len(responses[0]["params"]) >= 9:
+                                (
+                                    self.state.job_id,
+                                    self.state.prev_hash,
+                                    self.state.coinbase_part1,
+                                    self.state.coinbase_part2,
+                                    self.state.merkle_branch,
+                                    self.state.version,
+                                    self.state.nbits,
+                                    self.state.ntime,
+                                    self.state.clean_jobs,
+                                ) = responses[0]["params"]
+                                self.state.updated_prev_hash = self.state.prev_hash
+                            else:
+                                # Fallback: only update job_id if full params not available
+                                self.state.job_id = responses[0]["params"][0]
                         update_status("job_id", self.state.job_id)
                 except Exception as e:
                     self.log.error(
@@ -633,7 +699,25 @@ class Miner:
 
                 self.log.info("Mining block height %s", current_height + 1)
                 update_status("current_height", current_height + 1)
+                
+                # Reset extranonce2 counter for new block (#67)
+                if hasattr(self, 'extranonce2_counter'):
+                    self.extranonce2_counter = 0
+                    self.log.debug("Reset extranonce2_counter for new block")
+                
+                # Handle clean_jobs flag (#57)
+                with self.state._lock:
+                    clean_jobs = self.state.clean_jobs
+                if clean_jobs:
+                    self.log.info("clean_jobs flag set - resetting mining state for new block")
+                    # Reset nonce counters when clean_jobs is True
+                    self.cpu_nonce_counter = 0
+                    self.gpu_nonce_counter = 0
+                    if hasattr(self, 'extranonce2_counter'):
+                        self.extranonce2_counter = 0
+                
                 # Continue loop instead of recursive call to avoid stack overflow
+                # This will trigger recalculation of merkle_root, target, etc. in the loop
                 continue
 
             # Check CPU/GPU mining flags (thread-safe access)
@@ -648,11 +732,80 @@ class Miner:
                     "gpu_utilization_percent", 100
                 )
 
+            # Recalculate target, target_int, target_difficulty dynamically (#44, #50-55)
+            with self.state._lock:
+                nbits = self.state.nbits
+            
+            if not nbits or len(nbits) < 2:
+                self.log.warning(f"Invalid nbits in loop: {nbits}, skipping iteration")
+                hash_count += 1
+                continue
+            
+            try:
+                exponent = int(nbits[:2], 16)
+                if exponent < 3 or exponent > 255:
+                    self.log.warning(f"Invalid nbits exponent in loop: {exponent}, skipping iteration")
+                    hash_count += 1
+                    continue
+                target = (nbits[2:] + "00" * (exponent - 3)).zfill(64)
+                target_int = int(target, 16)
+                reference_diff = int(
+                    "00000000FFFF0000000000000000000000000000000000000000000000000000", 16
+                )
+                target_difficulty = reference_diff / target_int if target_int > 0 else 0
+            except (ValueError, IndexError, ZeroDivisionError) as e:
+                self.log.warning(f"Failed to recalculate target in loop: {e}, skipping iteration")
+                hash_count += 1
+                continue
+
+            # Recalculate merkle_root dynamically (#64)
+            with self.state._lock:
+                coinbase_part1 = self.state.coinbase_part1
+                extranonce1 = self.state.extranonce1
+                coinbase_part2 = self.state.coinbase_part2
+                merkle_branch = self.state.merkle_branch
+                extranonce2_size = self.state.extranonce2_size
+            
+            # Generate new extranonce2 for this iteration (#67)
+            if not hasattr(self, 'extranonce2_counter'):
+                self.extranonce2_counter = 0
+            extranonce2 = hex(self.extranonce2_counter)[2:].zfill(2 * extranonce2_size)
+            self.extranonce2_counter = (self.extranonce2_counter + 1) % (2**(8 * extranonce2_size))
+            
+            # Build coinbase and calculate merkle_root
+            if not coinbase_part1 or not extranonce1 or not coinbase_part2:
+                self.log.warning("Missing coinbase fields, skipping iteration")
+                hash_count += 1
+                continue
+            
+            coinbase = coinbase_part1 + extranonce1 + extranonce2 + coinbase_part2
+            coinbase_hash_bin = hashlib.sha256(
+                hashlib.sha256(binascii.unhexlify(coinbase)).digest()
+            ).digest()
+            
+            merkle_root_bin = coinbase_hash_bin
+            if merkle_branch:
+                for branch_hash in merkle_branch:
+                    branch_hash_bytes = binascii.unhexlify(branch_hash)
+                    merkle_root_bin = hashlib.sha256(
+                        hashlib.sha256(
+                            merkle_root_bin + branch_hash_bytes
+                        ).digest()
+                    ).digest()
+            
+            # Convert merkle_root to little-endian hex for block header
+            merkle_root_hex = binascii.hexlify(merkle_root_bin).decode()
+            merkle_root = self._hex_to_little_endian(merkle_root_hex, 64)
+
             # Initialize hash_hex to None (will be set by GPU or CPU mining)
             hash_hex = None
             nonce_hex = None
             cpu_hash_hex = None
             cpu_nonce_hex = None
+
+            # Log mining iteration start (every 1000 iterations to avoid spam)
+            if hash_count % 1000 == 0:
+                self.log.debug(f"Mining iteration {hash_count}: CPU enabled={cpu_mining_enabled}, GPU enabled={gpu_mining_enabled}, GPU miner={self.gpu_miner is not None}")
 
             # Use GPU miner if enabled and available
             if gpu_mining_enabled and self.gpu_miner:
@@ -661,11 +814,19 @@ class Miner:
                     prev_hash = self.state.prev_hash
                     ntime = self.state.ntime
                     nbits = self.state.nbits
-                block_header_base = self._build_block_header(
-                    prev_hash, merkle_root, ntime, nbits, "00000000"
-                )
-                block_header_hex = block_header_base
-                self.log.debug(f"GPU mining: block_header_base length={len(block_header_base)}, start_nonce={self.gpu_nonce_counter}")
+                try:
+                    block_header_base = self._build_block_header(
+                        prev_hash, merkle_root, ntime, nbits, "00000000"
+                    )
+                    block_header_hex = block_header_base
+                    self.log.debug(f"GPU mining: block_header_base length={len(block_header_base)}, start_nonce={self.gpu_nonce_counter}")
+                except (RuntimeError, ValueError) as e:
+                    self.log.error(f"Failed to build block header for GPU mining: {e}")
+                    self.log.error(f"Block header fields: prev_hash length={len(prev_hash) if prev_hash else 0}, merkle_root length={len(merkle_root) if merkle_root else 0}, ntime length={len(ntime) if ntime else 0}, nbits length={len(nbits) if nbits else 0}")
+                    hash_hex = None
+                    nonce_hex = None
+                    # Continue to CPU mining if enabled
+                    block_header_hex = None
 
                 # Use sequential nonce counter for better coverage (cycles through 2^32)
                 # Use batch_size from config instead of hardcoded value
@@ -675,9 +836,15 @@ class Miner:
                 self.log.debug(f"GPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.gpu_nonce_counter}")
 
                 # Try GPU batch hashing (use sequential nonce counter for better coverage)
-                try:
-                    batch_start_time = time.time()
-                    result = self.gpu_miner.hash_block_header(
+                if block_header_hex is None:
+                    # Block header build failed, skip GPU mining
+                    self.log.warning("Skipping GPU mining due to block header build failure")
+                    hash_hex = None
+                    nonce_hex = None
+                else:
+                    try:
+                        batch_start_time = time.time()
+                        result = self.gpu_miner.hash_block_header(
                         block_header_hex,
                         num_nonces=num_nonces_per_batch,
                         start_nonce=self.gpu_nonce_counter,
@@ -687,7 +854,11 @@ class Miner:
 
                     if result and isinstance(result, tuple) and len(result) == 2:
                         hash_hex, best_nonce = result
-                        nonce_hex = f"{best_nonce:08x}"
+                        # Convert GPU hash to little-endian for Bitcoin (#69)
+                        # GPU returns hash in big-endian (from binascii.hexlify), but Bitcoin uses little-endian
+                        hash_hex = self._hex_to_little_endian(hash_hex, 64)
+                        # Convert nonce to little-endian hex format for Bitcoin block header (#72)
+                        nonce_hex = self._int_to_little_endian_hex(best_nonce, 4)
                         # Update hash count based on actual batch size
                         hash_count += num_nonces_per_batch
                         self.total_hash_count += num_nonces_per_batch
@@ -708,15 +879,15 @@ class Miner:
                             pause_time = batch_duration * pause_ratio
                             if pause_time > 0:
                                 time.sleep(pause_time)
-                    else:
-                        # GPU returned None - CPU mining will handle it if enabled
+                        else:
+                            # GPU returned None - CPU mining will handle it if enabled
+                            hash_hex = None
+                            nonce_hex = None
+                    except Exception as e:
+                        # GPU error - CPU mining will handle it if enabled
+                        self.log.error(f"GPU mining error: {e}, CPU mining will continue if enabled")
                         hash_hex = None
                         nonce_hex = None
-                except Exception as e:
-                    # GPU error - CPU mining will handle it if enabled
-                    self.log.error(f"GPU mining error: {e}, CPU mining will continue if enabled")
-                    hash_hex = None
-                    nonce_hex = None
 
             # CPU mining (runs independently if enabled, regardless of GPU status)
             # This should run even when GPU is disabled or not available
@@ -726,28 +897,47 @@ class Miner:
                     prev_hash = self.state.prev_hash
                     ntime = self.state.ntime
                     nbits = self.state.nbits
-                cpu_nonce_hex = hex(random.getrandbits(32))[2:].zfill(8)
-                self.log.debug(f"CPU mining: generated nonce={cpu_nonce_hex}")
-                block_header = self._build_block_header(
-                    prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
-                )
+                # Use sequential nonce counter for better coverage (cycles through 2^32)
+                # Convert to little-endian hex format for Bitcoin block header (#72)
+                cpu_nonce_hex = self._int_to_little_endian_hex(self.cpu_nonce_counter, 4)
+                self.cpu_nonce_counter = (self.cpu_nonce_counter + 1) % (2**32)
+                self.log.debug(f"CPU mining: generated nonce (little-endian)={cpu_nonce_hex}")
                 try:
-                    block_header_bytes = binascii.unhexlify(block_header)
-                except binascii.Error as e:
-                    self.log.error(
-                        f"Invalid block_header hex in CPU mining: {block_header[:50]}... Error: {e}"
+                    block_header = self._build_block_header(
+                        prev_hash, merkle_root, ntime, nbits, cpu_nonce_hex
                     )
+                except (RuntimeError, ValueError) as e:
+                    self.log.error(f"Failed to build block header for CPU mining: {e}")
+                    self.log.error(f"Block header fields: prev_hash length={len(prev_hash) if prev_hash else 0}, merkle_root length={len(merkle_root) if merkle_root else 0}, ntime length={len(ntime) if ntime else 0}, nbits length={len(nbits) if nbits else 0}, nonce_hex={cpu_nonce_hex}")
+                    cpu_hash_hex = None
+                    cpu_nonce_hex = None
+                    block_header = None
+                
+                if block_header is None:
+                    # Block header build failed, skip this iteration
                     cpu_hash_hex = None
                     cpu_nonce_hex = None
                 else:
-                    cpu_hash_hex = hashlib.sha256(
-                        hashlib.sha256(block_header_bytes).digest()
-                    ).digest()
-                    cpu_hash_hex = binascii.hexlify(cpu_hash_hex).decode()
-                    self.log.debug(f"CPU hash computed: {cpu_hash_hex[:32]}...")
-                    hash_count += 1
-                    self.total_hash_count += 1
-                    update_status("total_hashes", self.total_hash_count)
+                    try:
+                        block_header_bytes = binascii.unhexlify(block_header)
+                    except binascii.Error as e:
+                        self.log.error(
+                            f"Invalid block_header hex in CPU mining: {block_header[:50]}... Error: {e}"
+                        )
+                        cpu_hash_hex = None
+                        cpu_nonce_hex = None
+                    else:
+                        cpu_hash_hex = hashlib.sha256(
+                            hashlib.sha256(block_header_bytes).digest()
+                        ).digest()
+                        # Convert hash to little-endian hex for Bitcoin (#69)
+                        # binascii.hexlify() returns big-endian, but Bitcoin uses little-endian for hash comparison
+                        cpu_hash_hex_big_endian = binascii.hexlify(cpu_hash_hex).decode()
+                        cpu_hash_hex = self._hex_to_little_endian(cpu_hash_hex_big_endian, 64)
+                        self.log.debug(f"CPU hash computed (little-endian): {cpu_hash_hex[:32]}...")
+                        hash_count += 1
+                        self.total_hash_count += 1
+                        update_status("total_hashes", self.total_hash_count)
                 
                 # If GPU didn't produce a hash, use CPU hash
                 if hash_hex is None:
@@ -765,17 +955,25 @@ class Miner:
                             hash_hex = cpu_hash_hex
                             nonce_hex = cpu_nonce_hex
 
-            # Check if we have a valid hash
+            # Update hash_count even if no mining was performed (#51)
             if hash_hex is None or nonce_hex is None:
                 if not cpu_mining_enabled and not (gpu_mining_enabled and self.gpu_miner):
                     # Both CPU and GPU mining disabled - pause briefly
                     self.log.warning("Both CPU and GPU mining are disabled. Pausing...")
+                    hash_count += 1  # Still count iteration
                     time.sleep(0.1)
                     continue
                 else:
+                    # Mining enabled but no hash produced (error case)
+                    # Log detailed error with state information
                     self.log.error(
-                        "hash_hex or nonce_hex not defined - this should not happen!"
+                        f"hash_hex or nonce_hex not defined - this should not happen! "
+                        f"hash_hex={hash_hex}, nonce_hex={nonce_hex}, "
+                        f"cpu_hash_hex={cpu_hash_hex}, cpu_nonce_hex={cpu_nonce_hex}, "
+                        f"cpu_enabled={cpu_mining_enabled}, gpu_enabled={gpu_mining_enabled}, "
+                        f"gpu_miner={self.gpu_miner is not None}"
                     )
+                    hash_count += 1  # Still count iteration
                     continue
 
             if hash_hex.startswith(prefix_zeros):
@@ -798,6 +996,10 @@ class Miner:
                 )
                 continue
 
+            # Bitcoin reference difficulty: 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+            reference_diff = int(
+                "00000000FFFF0000000000000000000000000000000000000000000000000000", 16
+            )
             difficulty = reference_diff / this_hash_int
 
             # Ensure height_to_best_difficulty key exists (may have changed if new block detected)
@@ -822,7 +1024,23 @@ class Miner:
                 if hash_count % 1000 == 0:
                     self.log.debug(f"Hash rate: {hash_rate:.2f} H/s, total hashes: {hash_count}, elapsed: {elapsed:.2f}s")
 
-            if hash_hex < target:
+            # Validate hash_hex and target lengths before comparison
+            if len(hash_hex) != 64:
+                self.log.error(f"Invalid hash_hex length: {len(hash_hex)} (expected 64 hex chars)")
+                continue
+            if len(target) != 64:
+                self.log.error(f"Invalid target length: {len(target)} (expected 64 hex chars)")
+                continue
+            
+            # Compare numerically (not as strings!)
+            try:
+                hash_int = int(hash_hex, 16)
+                target_int = int(target, 16)
+            except ValueError as e:
+                self.log.error(f"Failed to convert hash_hex or target to int: {e}")
+                continue
+            
+            if hash_int < target_int:
                 self.log.info("Block solved at height %s", current_height + 1)
                 self.log.info("Block hash %s", hash_hex)
                 # Build block header for logging (reconstruct from solution)
@@ -852,11 +1070,19 @@ class Miner:
                         response_str = (
                             ret.decode() if isinstance(ret, bytes) else str(ret)
                         )
-                        accepted = (
-                            '"result":true' in response_str
-                            or '"result": true' in response_str
-                            or "true" in response_str.lower()
-                        )
+                        # Parse pool response more carefully
+                        # Valid responses: {"result":true} or {"result": true} or {"error":null,"result":true}
+                        # Invalid: {"error":"...","result":false} or {"result":false}
+                        import json
+                        try:
+                            response_json = json.loads(response_str)
+                            accepted = response_json.get("result") is True and response_json.get("error") is None
+                        except (json.JSONDecodeError, AttributeError, TypeError):
+                            # Fallback to string matching if JSON parsing fails
+                            accepted = (
+                                '"result":true' in response_str
+                                or '"result": true' in response_str
+                            ) and '"error"' not in response_str.lower()
                         add_share(accepted, response_str)
                     except (
                         ImportError,

@@ -5,6 +5,54 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.20.0] - 2025-01-27
+
+### Fixed
+- **Critical: Bitcoin Block Header Byte-Order**: Fixed incorrect byte-order handling for all block header fields
+  - All fields (version, prev_hash, merkle_root, ntime, nbits, nonce) are now correctly converted to little-endian format
+  - Bitcoin block headers require little-endian byte order, but pool may send fields in big-endian
+  - Added `_hex_to_little_endian()` and `_int_to_little_endian_hex()` helper functions for proper conversion
+- **Critical: Hash Byte-Order for Target Comparison**: Fixed hash comparison by converting hashes to little-endian
+  - CPU and GPU hashes are now converted to little-endian before target comparison
+  - Bitcoin uses little-endian for hash comparison, but `binascii.hexlify()` returns big-endian
+- **Critical: Merkle Root Calculation**: Fixed multiple issues with Merkle root computation
+  - Removed incorrect byte-reversal that was corrupting the Merkle root
+  - Merkle root is now correctly converted to little-endian for block header
+  - Merkle root is recalculated dynamically in the mining loop (not just once)
+  - Fixed Merkle branch concatenation order (merkle_root + branch_hash)
+- **Critical: Dynamic State Updates**: Fixed stale state issues in mining loop
+  - `merkle_root`, `target`, `target_int`, `target_difficulty` are now recalculated in every loop iteration
+  - `extranonce2` is now generated sequentially (not randomly) and regenerated for each iteration
+  - `extranonce2_counter` is reset when a new block is detected
+- **Critical: Nonce Formatting**: Fixed nonce byte-order in block headers
+  - Nonces are now formatted in little-endian hex format for Bitcoin block headers
+  - CPU and GPU nonces are correctly converted using `_int_to_little_endian_hex()`
+- **Critical: clean_jobs Flag**: Implemented proper handling of `clean_jobs` flag from pool
+  - When `clean_jobs` is True, all nonce counters (CPU, GPU, extranonce2) are reset
+  - Ensures proper state reset when pool signals a new job
+- **Critical: hash_count Updates**: Fixed hash count not being updated when mining is disabled
+  - `hash_count` is now updated in every loop iteration, even when no mining occurs
+  - Prevents incorrect hash rate calculations
+
+### Changed
+- **Block Header Construction**: Complete refactoring of `_build_block_header()` method
+  - All input fields are now converted to little-endian before concatenation
+  - Removed incorrect padding/truncation logic that could corrupt fields
+  - Added proper validation and conversion for all 6 block header fields
+- **Mining Loop**: Major refactoring of the main mining loop
+  - Merkle root calculation moved inside the loop for dynamic updates
+  - Target calculation moved inside the loop for dynamic updates
+  - extranonce2 generation moved inside the loop for sequential coverage
+  - Better error handling and state management throughout
+
+### Technical Details
+- Added helper functions for Bitcoin byte-order conversion:
+  - `_hex_to_little_endian(hex_str, expected_length)`: Converts hex string to little-endian
+  - `_int_to_little_endian_hex(value, byte_length)`: Converts integer to little-endian hex
+- All block header fields are now properly converted from pool format (may be big-endian) to Bitcoin format (little-endian)
+- Hash values are converted to little-endian before comparison with target
+- Nonce values are formatted in little-endian before being inserted into block headers
+
 ## [2.19.3] - 2025-01-XX
 
 ### Changed

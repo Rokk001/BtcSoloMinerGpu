@@ -2,7 +2,22 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.19.3)
+## Latest Changes (v2.20.0)
+- **Critical Bitcoin Protocol Fixes**: Fixed multiple critical issues preventing mining from working
+  - **Byte-Order Corrections**: All block header fields (version, prev_hash, merkle_root, ntime, nbits, nonce) are now correctly converted to little-endian format (Bitcoin standard)
+  - **Hash Byte-Order**: CPU and GPU hashes are now converted to little-endian before target comparison
+  - **Merkle Root Fixes**: Removed incorrect byte-reversal, fixed Merkle branch concatenation order, Merkle root is recalculated dynamically in the loop
+  - **Dynamic State Updates**: `merkle_root`, `target`, `target_int`, `target_difficulty` are recalculated in every loop iteration
+  - **extranonce2 Sequential Generation**: Changed from random to sequential generation for better coverage, regenerated for each iteration
+  - **Nonce Formatting**: Nonces are now formatted in little-endian hex format for Bitcoin block headers
+  - **clean_jobs Flag**: Implemented proper handling to reset all nonce counters when pool signals new job
+  - **hash_count Updates**: Fixed hash count not being updated when mining is disabled
+- **Technical Improvements**:
+  - Added `_hex_to_little_endian()` and `_int_to_little_endian_hex()` helper functions
+  - Complete refactoring of `_build_block_header()` method with proper byte-order conversion
+  - Major refactoring of main mining loop for better state management and error handling
+
+## Previous Changes (v2.19.3)
 - **Logging to Docker Logs**: All logging now goes to stdout/stderr instead of separate log files
   - Logs are visible in `docker logs` command
   - No separate log files are created

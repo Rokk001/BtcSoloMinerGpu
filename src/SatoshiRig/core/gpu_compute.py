@@ -365,9 +365,22 @@ class CUDAMiner:
                     hash_bytes = results_array[i*32:(i+1)*32]
                     hash_hex = binascii.hexlify(hash_bytes).decode()
                     
-                    if best_hash is None or hash_hex < best_hash:
+                    # Compare numerically (not as strings!)
+                    if best_hash is None:
                         best_hash = hash_hex
                         best_nonce = nonces[i]
+                    else:
+                        try:
+                            hash_int = int(hash_hex, 16)
+                            best_hash_int = int(best_hash, 16)
+                            if hash_int < best_hash_int:
+                                best_hash = hash_hex
+                                best_nonce = nonces[i]
+                        except ValueError:
+                            # If conversion fails, use string comparison as fallback
+                            if hash_hex < best_hash:
+                                best_hash = hash_hex
+                                best_nonce = nonces[i]
                 
                 return (best_hash, best_nonce) if best_hash else None
             finally:
@@ -725,9 +738,22 @@ class OpenCLMiner:
                     hash_bytes = results_array[i*32:(i+1)*32]
                     hash_hex = binascii.hexlify(hash_bytes).decode()
                     
-                    if best_hash is None or hash_hex < best_hash:
+                    # Compare numerically (not as strings!)
+                    if best_hash is None:
                         best_hash = hash_hex
                         best_nonce = nonces[i]
+                    else:
+                        try:
+                            hash_int = int(hash_hex, 16)
+                            best_hash_int = int(best_hash, 16)
+                            if hash_int < best_hash_int:
+                                best_hash = hash_hex
+                                best_nonce = nonces[i]
+                        except ValueError:
+                            # If conversion fails, use string comparison as fallback
+                            if hash_hex < best_hash:
+                                best_hash = hash_hex
+                                best_nonce = nonces[i]
                 
                 return (best_hash, best_nonce) if best_hash else None
             finally:

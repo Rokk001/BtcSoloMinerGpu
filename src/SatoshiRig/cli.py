@@ -62,21 +62,11 @@ def main() :
             sys.exit(2)
     else:
         if WEB_AVAILABLE and not args.no_web:
-            # Setup logging with proper file path handling
-            log_file = cfg.get("logging", {}).get("file", "miner.log")
-            if log_file:
-                # Ensure log directory exists
-                log_dir = os.path.dirname(log_file) if os.path.dirname(log_file) else None
-                if log_dir:
-                    os.makedirs(log_dir, exist_ok=True)
-                # Convert to absolute path
-                if not os.path.isabs(log_file):
-                    log_file = os.path.join(os.getcwd(), log_file)
-            
+            # Setup logging to stdout/stderr for Docker logs
             logging.basicConfig(
                 level = getattr(logging, cfg.get("logging", {}).get("level", "INFO").upper(), logging.INFO),
-                filename = log_file if log_file else None,
-                format = '%(asctime)s %(levelname)s %(name)s %(message)s'
+                format = '%(asctime)s %(levelname)s %(name)s %(message)s',
+                handlers=[logging.StreamHandler()]  # Log to stdout/stderr for Docker logs
             )
             logger = logging.getLogger("SatoshiRig")
             signal(SIGINT , _handle_sigint)
@@ -103,8 +93,8 @@ def main() :
 
     logging.basicConfig(
         level = getattr(logging , cfg.get("logging" , {}).get("level" , "INFO").upper() , logging.INFO) ,
-        filename = cfg.get("logging" , {}).get("file" , None) ,
-        format = '%(asctime)s %(levelname)s %(name)s %(message)s'
+        format = '%(asctime)s %(levelname)s %(name)s %(message)s',
+        handlers=[logging.StreamHandler()]  # Log to stdout/stderr for Docker logs
     )
     logger = logging.getLogger("SatoshiRig")
 

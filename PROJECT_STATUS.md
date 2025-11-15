@@ -2,6 +2,12 @@
 
 Updated: 2025-01-27
 
+## Latest Changes (v2.19.3)
+- **Logging to Docker Logs**: All logging now goes to stdout/stderr instead of separate log files
+  - Logs are visible in `docker logs` command
+  - No separate log files are created
+  - Removed all FileHandler usage in favor of StreamHandler
+
 ## Overview
 - Repository name: `SatoshiRig`
 - Purpose: Neutral Bitcoin solo-mining client with configurable compute backend, Docker/Compose support, CI/CD, and web dashboard.

@@ -5,6 +5,26 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.17] - 2025-01-27
+
+### Added
+- **Maximal Logging System**: Implemented comprehensive verbose logging throughout the entire codebase
+  - Added `_vlog()` helper function in `utils/logging_utils.py` for consistent verbose logging
+  - Added verbose logging to `pool_client.py`: All methods (connect, subscribe, authorize, read_notify, submit, close) now log every operation
+  - Added verbose logging to `cli.py`: Complete main function and signal handlers log all execution steps
+  - Added verbose logging to `config.py`: Configuration loading and validation functions log all operations
+  - Added verbose logging to `db.py`: All database operations (get_conn, get_value, set_value, delete_value, get_section) log every step
+  - Added verbose logging flag in config: `logging.verbose` can be enabled to activate maximal logging
+  - Every executable code line is now logged when verbose logging is enabled:
+    - Variable assignments
+    - Function calls
+    - Condition checks (before/after)
+    - Lock acquisitions/releases
+    - Socket operations
+    - Database operations
+    - Exception handling
+  - Enables comprehensive debugging and troubleshooting of mining operations
+
 ## [2.25.16] - 2025-01-27
 
 ### Fixed

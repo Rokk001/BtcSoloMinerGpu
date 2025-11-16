@@ -1,13 +1,26 @@
 import os
+import logging
 from typing import Any, Dict
 
 from .db import get_value, set_value
+from .utils.logging_utils import _vlog
+
+_logger = logging.getLogger("SatoshiRig.config")
+_verbose_logging = True  # Always enable verbose logging for config
 
 
 def _bool_from_str(value: str, default: bool = False) -> bool:
+    _vlog(_logger, _verbose_logging, f"config._bool_from_str: START value={value}, default={default}")
+    _vlog(_logger, _verbose_logging, f"config._bool_from_str: checking value is None: {value is None}")
     if value is None:
+        _vlog(_logger, _verbose_logging, f"config._bool_from_str: value is None, returning default={default}")
         return default
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    _vlog(_logger, _verbose_logging, f"config._bool_from_str: converting value to string and stripping")
+    value_str = str(value).strip().lower()
+    _vlog(_logger, _verbose_logging, f"config._bool_from_str: value_str={value_str}")
+    result = value_str in {"1", "true", "yes", "on"}
+    _vlog(_logger, _verbose_logging, f"config._bool_from_str: result={result}, END")
+    return result
 
 
 def load_config() -> Dict[str, Any]:
@@ -15,11 +28,17 @@ def load_config() -> Dict[str, Any]:
     Load configuration from database only (no TOML files).
     Falls back to environment variables and defaults.
     """
+    _vlog(_logger, _verbose_logging, "config.load_config: START")
     cfg = {}
+    _vlog(_logger, _verbose_logging, f"config.load_config: cfg dict created, keys={list(cfg.keys())}")
     
     # Wallet - ALWAYS from DB only
+    _vlog(_logger, _verbose_logging, "config.load_config: getting wallet address from DB")
     wallet_addr = get_value("settings", "wallet_address")
+    _vlog(_logger, _verbose_logging, f"config.load_config: wallet_addr={'present' if wallet_addr else 'None'}, length={len(wallet_addr) if wallet_addr else 0}")
+    _vlog(_logger, _verbose_logging, "config.load_config: setting cfg['wallet']")
     cfg["wallet"] = {"address": wallet_addr.strip() if wallet_addr else ""}
+    _vlog(_logger, _verbose_logging, f"config.load_config: cfg['wallet'] set, address length={len(cfg['wallet']['address'])}")
     
     # Pool - from DB, fallback to env/defaults
     pool_host = get_value("pool", "host")
@@ -43,6 +62,7 @@ def load_config() -> Dict[str, Any]:
     cfg["logging"] = {
         "file": get_value("logging", "file") or os.environ.get("LOG_FILE", "miner.log"),
         "level": get_value("logging", "level") or os.environ.get("LOG_LEVEL", "INFO"),
+        "verbose": _bool_from_str(get_value("logging", "verbose") or os.environ.get("VERBOSE_LOGGING", "false"), False),
     }
     
     # Miner - from DB, fallback to defaults
@@ -107,6 +127,7 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg.setdefault("logging", {})
     cfg["logging"].setdefault("file", "miner.log")
     cfg["logging"].setdefault("level", "INFO")
+    cfg["logging"].setdefault("verbose", False)
 
     # Miner
     cfg.setdefault("miner", {})

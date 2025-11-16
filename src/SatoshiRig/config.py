@@ -10,12 +10,28 @@ _verbose_logging = True  # Always enable verbose logging for config
 
 
 def _bool_from_str(value: str, default: bool = False) -> bool:
-    _vlog(_logger, _verbose_logging, f"config._bool_from_str: START value={value}, default={default}")
-    _vlog(_logger, _verbose_logging, f"config._bool_from_str: checking value is None: {value is None}")
+    _vlog(
+        _logger,
+        _verbose_logging,
+        f"config._bool_from_str: START value={value}, default={default}",
+    )
+    _vlog(
+        _logger,
+        _verbose_logging,
+        f"config._bool_from_str: checking value is None: {value is None}",
+    )
     if value is None:
-        _vlog(_logger, _verbose_logging, f"config._bool_from_str: value is None, returning default={default}")
+        _vlog(
+            _logger,
+            _verbose_logging,
+            f"config._bool_from_str: value is None, returning default={default}",
+        )
         return default
-    _vlog(_logger, _verbose_logging, f"config._bool_from_str: converting value to string and stripping")
+    _vlog(
+        _logger,
+        _verbose_logging,
+        f"config._bool_from_str: converting value to string and stripping",
+    )
     value_str = str(value).strip().lower()
     _vlog(_logger, _verbose_logging, f"config._bool_from_str: value_str={value_str}")
     result = value_str in {"1", "true", "yes", "on"}
@@ -30,66 +46,114 @@ def load_config() -> Dict[str, Any]:
     """
     _vlog(_logger, _verbose_logging, "config.load_config: START")
     cfg = {}
-    _vlog(_logger, _verbose_logging, f"config.load_config: cfg dict created, keys={list(cfg.keys())}")
-    
+    _vlog(
+        _logger,
+        _verbose_logging,
+        f"config.load_config: cfg dict created, keys={list(cfg.keys())}",
+    )
+
     # Wallet - ALWAYS from DB only
-    _vlog(_logger, _verbose_logging, "config.load_config: getting wallet address from DB")
+    _vlog(
+        _logger, _verbose_logging, "config.load_config: getting wallet address from DB"
+    )
     wallet_addr = get_value("settings", "wallet_address")
-    _vlog(_logger, _verbose_logging, f"config.load_config: wallet_addr={'present' if wallet_addr else 'None'}, length={len(wallet_addr) if wallet_addr else 0}")
+    _vlog(
+        _logger,
+        _verbose_logging,
+        f"config.load_config: wallet_addr={'present' if wallet_addr else 'None'}, length={len(wallet_addr) if wallet_addr else 0}",
+    )
     _vlog(_logger, _verbose_logging, "config.load_config: setting cfg['wallet']")
     cfg["wallet"] = {"address": wallet_addr.strip() if wallet_addr else ""}
-    _vlog(_logger, _verbose_logging, f"config.load_config: cfg['wallet'] set, address length={len(cfg['wallet']['address'])}")
-    
+    _vlog(
+        _logger,
+        _verbose_logging,
+        f"config.load_config: cfg['wallet'] set, address length={len(cfg['wallet']['address'])}",
+    )
+
     # Pool - from DB, fallback to env/defaults
     pool_host = get_value("pool", "host")
     pool_port = get_value("pool", "port")
     cfg["pool"] = {
-        "host": pool_host if pool_host else os.environ.get("POOL_HOST", "solo.ckpool.org"),
-        "port": int(pool_port) if pool_port else int(os.environ.get("POOL_PORT", "3333"))
+        "host": (
+            pool_host if pool_host else os.environ.get("POOL_HOST", "solo.ckpool.org")
+        ),
+        "port": (
+            int(pool_port) if pool_port else int(os.environ.get("POOL_PORT", "3333"))
+        ),
     }
-    
+
     # Network - from DB, fallback to env/defaults
     cfg["network"] = {
-        "source": get_value("network", "source") or os.environ.get("BLOCK_SOURCE", "web"),
-        "latest_block_url": get_value("network", "latest_block_url") or "https://blockchain.info/latestblock",
-        "request_timeout_secs": int(get_value("network", "request_timeout_secs") or os.environ.get("REQUEST_TIMEOUT", "15")),
-        "rpc_url": get_value("network", "rpc_url") or os.environ.get("BITCOIN_RPC_URL", "http://127.0.0.1:8332"),
-        "rpc_user": get_value("network", "rpc_user") or os.environ.get("BITCOIN_RPC_USER", ""),
-        "rpc_password": get_value("network", "rpc_password") or os.environ.get("BITCOIN_RPC_PASSWORD", ""),
+        "source": get_value("network", "source")
+        or os.environ.get("BLOCK_SOURCE", "web"),
+        "latest_block_url": get_value("network", "latest_block_url")
+        or "https://blockchain.info/latestblock",
+        "request_timeout_secs": int(
+            get_value("network", "request_timeout_secs")
+            or os.environ.get("REQUEST_TIMEOUT", "15")
+        ),
+        "rpc_url": get_value("network", "rpc_url")
+        or os.environ.get("BITCOIN_RPC_URL", "http://127.0.0.1:8332"),
+        "rpc_user": get_value("network", "rpc_user")
+        or os.environ.get("BITCOIN_RPC_USER", ""),
+        "rpc_password": get_value("network", "rpc_password")
+        or os.environ.get("BITCOIN_RPC_PASSWORD", ""),
     }
-    
+
     # Logging - from DB, fallback to env/defaults
     cfg["logging"] = {
-        "file": get_value("logging", "file") or os.environ.get("LOG_FILE", "miner.log"),
         "level": get_value("logging", "level") or os.environ.get("LOG_LEVEL", "INFO"),
-        "verbose": _bool_from_str(get_value("logging", "verbose") or os.environ.get("VERBOSE_LOGGING", "false"), False),
+        "verbose": _bool_from_str(
+            get_value("logging", "verbose")
+            or os.environ.get("VERBOSE_LOGGING", "false"),
+            False,
+        ),
     }
-    
+
     # Miner - from DB, fallback to defaults
     cfg["miner"] = {
         "restart_delay_secs": int(get_value("miner", "restart_delay_secs") or "2"),
-        "subscribe_thread_start_delay_secs": int(get_value("miner", "subscribe_thread_start_delay_secs") or "4"),
-        "hash_log_prefix_zeros": int(get_value("miner", "hash_log_prefix_zeros") or "7"),
+        "subscribe_thread_start_delay_secs": int(
+            get_value("miner", "subscribe_thread_start_delay_secs") or "4"
+        ),
+        "hash_log_prefix_zeros": int(
+            get_value("miner", "hash_log_prefix_zeros") or "7"
+        ),
     }
-    
+
     # Compute - from DB, fallback to env/defaults
-    backend = get_value("compute", "backend") or os.environ.get("COMPUTE_BACKEND", "cpu")
+    backend = get_value("compute", "backend") or os.environ.get(
+        "COMPUTE_BACKEND", "cpu"
+    )
     cfg["compute"] = {
         "backend": backend,
-        "gpu_device": int(get_value("compute", "gpu_device") or os.environ.get("GPU_DEVICE", "0")),
-        "batch_size": int(get_value("compute", "batch_size") or os.environ.get("GPU_BATCH_SIZE", "256")),
-        "max_workers": int(get_value("compute", "max_workers") or os.environ.get("GPU_MAX_WORKERS", "8")),
-        "gpu_utilization_percent": int(get_value("compute", "gpu_utilization_percent") or os.environ.get("GPU_UTILIZATION_PERCENT", "100")),
-        "cpu_mining_enabled": _bool_from_str(get_value("compute", "cpu_mining_enabled"), True),
-        "gpu_mining_enabled": _bool_from_str(get_value("compute", "gpu_mining_enabled"), False),
+        "gpu_device": int(
+            get_value("compute", "gpu_device") or os.environ.get("GPU_DEVICE", "0")
+        ),
+        "batch_size": int(
+            get_value("compute", "batch_size")
+            or os.environ.get("GPU_BATCH_SIZE", "256")
+        ),
+        "max_workers": int(
+            get_value("compute", "max_workers")
+            or os.environ.get("GPU_MAX_WORKERS", "8")
+        ),
+        "gpu_utilization_percent": int(
+            get_value("compute", "gpu_utilization_percent")
+            or os.environ.get("GPU_UTILIZATION_PERCENT", "100")
+        ),
+        "cpu_mining_enabled": _bool_from_str(
+            get_value("compute", "cpu_mining_enabled"), True
+        ),
+        "gpu_mining_enabled": _bool_from_str(
+            get_value("compute", "gpu_mining_enabled"), False
+        ),
     }
-    
+
     # Database retention
     retention = get_value("database", "retention_days")
-    cfg["database"] = {
-        "retention_days": int(retention) if retention else 30
-    }
-    
+    cfg["database"] = {"retention_days": int(retention) if retention else 30}
+
     return _validate_config(cfg)
 
 
@@ -99,7 +163,7 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg.setdefault("wallet", {})
     if "address" not in cfg["wallet"]:
         cfg["wallet"]["address"] = ""
-    
+
     # Pool
     cfg.setdefault("pool", {})
     cfg["pool"].setdefault("host", "solo.ckpool.org")
@@ -125,7 +189,6 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     # Logging
     cfg.setdefault("logging", {})
-    cfg["logging"].setdefault("file", "miner.log")
     cfg["logging"].setdefault("level", "INFO")
     cfg["logging"].setdefault("verbose", False)
 
@@ -134,7 +197,11 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg["miner"].setdefault("restart_delay_secs", 2)
     cfg["miner"].setdefault("subscribe_thread_start_delay_secs", 4)
     cfg["miner"].setdefault("hash_log_prefix_zeros", 7)
-    for k in ("restart_delay_secs", "subscribe_thread_start_delay_secs", "hash_log_prefix_zeros"):
+    for k in (
+        "restart_delay_secs",
+        "subscribe_thread_start_delay_secs",
+        "hash_log_prefix_zeros",
+    ):
         try:
             cfg["miner"][k] = int(cfg["miner"][k])
         except Exception:
@@ -160,7 +227,7 @@ def _validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         cfg["compute"]["gpu_utilization_percent"] = max(1, min(100, gpu_util))
     except Exception:
         cfg["compute"]["gpu_utilization_percent"] = 100
-    
+
     if "cpu_mining_enabled" not in cfg["compute"]:
         cfg["compute"]["cpu_mining_enabled"] = True
     if "gpu_mining_enabled" not in cfg["compute"]:
@@ -223,13 +290,20 @@ def persist_config_to_db(cfg: Dict[str, Any]) -> None:
     # Logging
     log_cfg = cfg.get("logging", {})
     set_value("logging", "level", str(log_cfg.get("level", "INFO")))
-    set_value("logging", "file", str(log_cfg.get("file", "miner.log")))
 
     # Miner
     miner_cfg = cfg.get("miner", {})
-    set_value("miner", "restart_delay_secs", str(miner_cfg.get("restart_delay_secs", 2)))
-    set_value("miner", "subscribe_thread_start_delay_secs", str(miner_cfg.get("subscribe_thread_start_delay_secs", 4)))
-    set_value("miner", "hash_log_prefix_zeros", str(miner_cfg.get("hash_log_prefix_zeros", 7)))
+    set_value(
+        "miner", "restart_delay_secs", str(miner_cfg.get("restart_delay_secs", 2))
+    )
+    set_value(
+        "miner",
+        "subscribe_thread_start_delay_secs",
+        str(miner_cfg.get("subscribe_thread_start_delay_secs", 4)),
+    )
+    set_value(
+        "miner", "hash_log_prefix_zeros", str(miner_cfg.get("hash_log_prefix_zeros", 7))
+    )
 
     # Database retention
     db_cfg = cfg.get("database", {})

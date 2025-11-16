@@ -12,16 +12,21 @@ from typing import Dict, List, Optional
 
 from flask import Flask, Response, render_template_string, jsonify, request
 from flask_socketio import SocketIO, emit
+
 # Fix for "Too many packets in payload" error - increase max_decode_packets
 try:
     from engineio.payload import Payload
-    Payload.max_decode_packets = 500  # Increase from default (likely 16) to handle large payloads
+
+    Payload.max_decode_packets = (
+        500  # Increase from default (likely 16) to handle large payloads
+    )
 except ImportError:
     pass  # Fallback if engineio is not available
 
 from ..core.state import MinerState
 from ..utils.formatting import format_hash_number, format_time_to_block
 from ..config import persist_config_to_db
+from ..logging_config import configure_logging
 
 # Try to import GPU monitoring libraries
 try:
@@ -253,6 +258,8 @@ def stop_performance_monitoring():
     _performance_running = False
 
 
+# Configure logging from environment (can be overridden at runtime via API)
+configure_logging()
 app = Flask(__name__, static_url_path="/static")
 # Use environment variable for SECRET_KEY or generate a random one
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
@@ -269,9 +276,9 @@ socketio = SocketIO(
     max_packet_size=10e6,  # 10MB max packet size
     ping_timeout=60,
     ping_interval=25,
-    logger=False,  # Disable SocketIO's own logging to reduce noise
-    engineio_logger=False,
-    async_mode='threading'  # Use threading mode for better compatibility
+    logger=True,  # Enable SocketIO logging to aid debugging of handshake/transport
+    engineio_logger=True,
+    async_mode="threading",  # Use threading mode for better compatibility
 )
 
 # Register SocketIO instance with status module for immediate updates
@@ -415,64 +422,76 @@ def start_mining():
 
     try:
         global _miner_state, _miner
-        
+
         # Check if miner instance exists
         if not _miner:
             # Try to load wallet from config and start miner
             from ..config import load_config
+
             cfg = load_config()
             wallet = cfg.get("wallet", {}).get("address", "").strip()
-            
+
             if not wallet:
-                return jsonify({
-                    "success": False,
-                    "error": "NoWalletAddress",
-                    "message": "Wallet address not configured. Please set it in Settings first."
-                }), 400
-            
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "NoWalletAddress",
+                            "message": "Wallet address not configured. Please set it in Settings first.",
+                        }
+                    ),
+                    400,
+                )
+
             # Initialize and start miner
             try:
                 from ..clients.pool_client import PoolClient
                 from ..core.miner import Miner
                 from ..core.state import MinerState
                 import logging
-                
+
                 logger = logging.getLogger("SatoshiRig")
                 pool = PoolClient(cfg["pool"]["host"], int(cfg["pool"]["port"]))
                 miner_state = MinerState() if not _miner_state else _miner_state
                 miner = Miner(wallet, cfg, pool, miner_state, logger)
-                
+
                 set_miner(miner)
                 set_miner_state(miner_state)
-                
+
                 # Connect to pool first (without starting mining)
                 try:
-                    connect_thread = threading.Thread(target=miner.connect_to_pool_only, daemon=True)
+                    connect_thread = threading.Thread(
+                        target=miner.connect_to_pool_only, daemon=True
+                    )
                     connect_thread.start()
                     # Wait a bit for connection to establish
                     connect_thread.join(timeout=5)
                 except Exception as connect_error:
                     logger.warning(f"Failed to connect to pool: {connect_error}")
-                
+
                 # Start miner in background thread
                 miner_thread = threading.Thread(target=miner.start, daemon=True)
                 miner_thread.start()
-                
+
                 update_status("running", True)
                 update_status("wallet_address", wallet)
-                return jsonify({
-                    "success": True,
-                    "message": "Miner started successfully"
-                })
+                return jsonify(
+                    {"success": True, "message": "Miner started successfully"}
+                )
             except Exception as e:
                 logger = logging.getLogger("SatoshiRig.web")
                 logger.error(f"Failed to start miner: {e}", exc_info=True)
-                return jsonify({
-                    "success": False,
-                    "error": "StartFailed",
-                    "message": f"Failed to start miner: {str(e)}"
-                }), 500
-        
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "StartFailed",
+                            "message": f"Failed to start miner: {str(e)}",
+                        }
+                    ),
+                    500,
+                )
+
         # Miner exists, just clear shutdown flag
         if not _miner_state:
             return (
@@ -490,9 +509,7 @@ def start_mining():
         with _miner_state._lock:
             _miner_state.shutdown_flag = False
         update_status("running", True)
-        return jsonify(
-            {"success": True, "message": "Mining resumed"}
-        )
+        return jsonify({"success": True, "message": "Mining resumed"})
     except Exception as e:
         logging.error(f"Error starting mining: {e}")
         return (
@@ -680,10 +697,6 @@ def save_config_api():
                     validation_errors.append(
                         "Logging level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
                     )
-            if "file" in config["logging"]:
-                log_file = config["logging"]["file"].strip()
-                if not log_file:
-                    validation_errors.append("Log file path cannot be empty")
 
         if validation_errors:
             return (
@@ -744,25 +757,26 @@ def save_config_api():
             # Update logging level if changed
             if "logging" in config:
                 log_level = config["logging"].get("level", "INFO")
-                log_file = config["logging"].get("file", None)
                 try:
-                    update_logging_level(log_level, log_file)
-                    logger.info(f"Logging level updated to {log_level}")
-                except Exception as e:
-                    logger.warning(f"Failed to update logging level: {e}")
+                    update_logging_level(log_level)
+                    logger.info("Logging level updated to %s", log_level)
+                except Exception:
+                    logger.warning("Failed to update logging level during config save")
 
             # Reload config from database
             try:
                 saved_config = load_config()
                 set_config(saved_config)
-                
+
                 # Check if wallet address was set and miner is not running - auto-start miner
                 wallet = saved_config.get("wallet", {}).get("address", "").strip()
                 if wallet and not _miner:
-                    logger.info(f"Wallet address configured, attempting to auto-start miner...")
+                    logger.info(
+                        f"Wallet address configured, attempting to auto-start miner..."
+                    )
                     # Try to start miner (will be handled by /api/start if user clicks start button)
                     # We don't auto-start here to avoid starting miner without user consent
-                
+
                 # If miner exists and pool config changed, reconnect to pool
                 if _miner and wallet:
                     try:
@@ -772,13 +786,21 @@ def save_config_api():
                             _miner.pool.host = saved_config["pool"]["host"]
                             _miner.pool.port = int(saved_config["pool"]["port"])
                             # Connect to pool (without starting mining) in background thread
-                            connect_thread = threading.Thread(target=_miner.connect_to_pool_only, daemon=True)
+                            connect_thread = threading.Thread(
+                                target=_miner.connect_to_pool_only, daemon=True
+                            )
                             connect_thread.start()
-                            logger.info("Pool connection re-established after config change")
+                            logger.info(
+                                "Pool connection re-established after config change"
+                            )
                         else:
-                            logger.debug("Miner is running, pool connection is already established - skipping reconnect to avoid interference")
+                            logger.debug(
+                                "Miner is running, pool connection is already established - skipping reconnect to avoid interference"
+                            )
                     except Exception as pool_connect_error:
-                        logger.warning(f"Failed to reconnect to pool after config change: {pool_connect_error}")
+                        logger.warning(
+                            f"Failed to reconnect to pool after config change: {pool_connect_error}"
+                        )
             except Exception as e:
                 logger.warning(f"Could not reload config after save: {e}")
                 set_config(full_config)
@@ -1201,56 +1223,34 @@ def set_miner(miner):
 
 def update_logging_level(log_level: str, log_file: str = None):
     """Update logging level dynamically at runtime
-    
+
     Note: log_file parameter is ignored - all logs go to stdout/stderr for Docker logs
     """
-    import logging
-    
-    # Convert string level to logging constant
-    level_map = {
-        "DEBUG": logging.DEBUG,
-        "INFO": logging.INFO,
-        "WARNING": logging.WARNING,
-        "ERROR": logging.ERROR,
-        "CRITICAL": logging.CRITICAL,
-    }
-    
-    level = level_map.get(log_level.upper(), logging.INFO)
-    
-    # Update root logger level
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    
-    # Update SatoshiRig logger
-    satoshirig_logger = logging.getLogger("SatoshiRig")
-    satoshirig_logger.setLevel(level)
-    
-    # Update web logger
-    web_logger = logging.getLogger("SatoshiRig.web")
-    web_logger.setLevel(level)
-    
-    # Update miner logger if miner exists
-    global _miner
-    if _miner and hasattr(_miner, 'log'):
-        _miner.log.setLevel(level)
-    
-    # Remove any existing file handlers (we only want stdout/stderr for Docker logs)
-    for handler in root_logger.handlers[:]:
-        if isinstance(handler, logging.FileHandler):
-            handler.close()
-            root_logger.removeHandler(handler)
-    
-    # Ensure we have a StreamHandler for stdout/stderr
-    has_stream_handler = any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers)
-    if not has_stream_handler:
-        stream_handler = logging.StreamHandler()
-        stream_handler.setLevel(level)
-        stream_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
-        root_logger.addHandler(stream_handler)
-    
-    # Update all handlers to the new level
-    for handler in root_logger.handlers:
-        handler.setLevel(level)
+    # Reconfigure logging via central helper which will recreate handlers
+    try:
+        from ..logging_config import configure_logging
+
+        # configure_logging will set root level and handlers
+        configure_logging(level=log_level, log_file=log_file)
+    except Exception:
+        # Fallback: do a minimal level update if helper fails
+        import logging
+
+        level_map = {
+            "DEBUG": logging.DEBUG,
+            "INFO": logging.INFO,
+            "WARNING": logging.WARNING,
+            "ERROR": logging.ERROR,
+            "CRITICAL": logging.CRITICAL,
+        }
+        level = level_map.get(log_level.upper(), logging.INFO)
+        root_logger = logging.getLogger()
+        root_logger.setLevel(level)
+        web_logger = logging.getLogger("SatoshiRig.web")
+        web_logger.setLevel(level)
+        global _miner
+        if _miner and hasattr(_miner, "log"):
+            _miner.log.setLevel(level)
 
 
 def set_config(config: dict):
@@ -1280,7 +1280,6 @@ def set_config(config: dict):
             "rpc_password": "",  # Empty - user must enter
         },
         "logging": {
-            "file": config.get("logging", {}).get("file", "miner.log"),
             "level": config.get("logging", {}).get("level", "INFO"),
         },
         "miner": {

@@ -80,8 +80,12 @@ class Miner:
         self.log.debug("Miner.__init__: _notification_thread=None")
         self._notification_thread_running = False  # Flag for notification thread
         self.log.debug("Miner.__init__: _notification_thread_running=False")
-        self._verbose_logging = self.cfg.get("logging", {}).get("verbose", False)
-        self.log.debug(f"Miner.__init__: _verbose_logging={self._verbose_logging}")
+        # Verbose logging is enabled if explicitly set OR if logger is at DEBUG level
+        self._verbose_logging = (
+            self.cfg.get("logging", {}).get("verbose", False)
+            or self.log.isEnabledFor(logging.DEBUG)
+        )
+        self.log.debug(f"Miner.__init__: _verbose_logging={self._verbose_logging} (from config: {self.cfg.get('logging', {}).get('verbose', False)}, DEBUG enabled: {self.log.isEnabledFor(logging.DEBUG)})")
 
         # Initialize GPU miner if configured
         self.log.debug("Miner.__init__: calling _initialize_gpu_miner()")

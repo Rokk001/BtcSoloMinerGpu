@@ -3,8 +3,9 @@ import logging
 
 
 def _vlog(logger, verbose, message):
-    """Verbose logging helper - logs if verbose is True"""
-    if verbose:
+    """Verbose logging helper - logs if verbose is True OR logger is at DEBUG level"""
+    # Log if verbose flag is set OR if logger is at DEBUG level
+    if verbose or logger.isEnabledFor(logging.DEBUG):
         logger.debug(message)
 
 

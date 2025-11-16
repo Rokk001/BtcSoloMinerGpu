@@ -2,7 +2,15 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.17)
+## Latest Changes (v2.25.18)
+- **Fixed Verbose Logging Implementation**: Corrected `_vlog()` function to properly check DEBUG logging level
+  - `_vlog()` now checks both `verbose` flag AND `logger.isEnabledFor(logging.DEBUG)`
+  - Logs will now appear when DEBUG level is enabled, regardless of `verbose` config flag
+  - Updated `Miner.__init__` to set `_verbose_logging` based on both config flag and DEBUG level
+  - Fixes issue where verbose logs were not appearing even when DEBUG logging was enabled
+  - Ensures maximal logging is actually visible when logging level is set to DEBUG
+
+## Previous Changes (v2.25.17)
 - **Maximal Logging System**: Implemented comprehensive verbose logging throughout the entire codebase
   - Added `_vlog()` helper function in `utils/logging_utils.py` for consistent verbose logging
   - Added verbose logging to `pool_client.py`: All methods (connect, subscribe, authorize, read_notify, submit, close) now log every operation

@@ -5,6 +5,16 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.18] - 2025-01-27
+
+### Fixed
+- **Fixed Verbose Logging Implementation**: Corrected `_vlog()` function to properly check DEBUG logging level
+  - `_vlog()` now checks both `verbose` flag AND `logger.isEnabledFor(logging.DEBUG)`
+  - Logs will now appear when DEBUG level is enabled, regardless of `verbose` config flag
+  - Updated `Miner.__init__` to set `_verbose_logging` based on both config flag and DEBUG level
+  - Fixes issue where verbose logs were not appearing even when DEBUG logging was enabled
+  - Ensures maximal logging is actually visible when logging level is set to DEBUG
+
 ## [2.25.17] - 2025-01-27
 
 ### Added

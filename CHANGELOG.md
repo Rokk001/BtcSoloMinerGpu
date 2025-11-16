@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.16] - 2025-01-27
+
+### Fixed
+- **Critical: Fixed UnboundLocalError in GPU Mining**: Fixed `block_header_hex` variable initialization and logic errors
+  - Initialize `block_header_hex = None` at the start of each iteration to prevent UnboundLocalError
+  - Fixed logic where `block_header_hex = None` was always set, overwriting successful block header builds
+  - Set `block_header_hex = None` in except block when block header build fails
+  - Moved GPU batch mining code inside the `if gpu_mining_enabled and self.gpu_miner:` block
+  - GPU mining code now only executes when GPU mining is enabled and available
+  - Prevents UnboundLocalError when GPU mining is disabled
+
 ## [2.25.15] - 2025-01-27
 
 ### Fixed

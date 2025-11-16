@@ -1104,6 +1104,7 @@ class Miner:
                 nonce_hex = None
                 cpu_hash_hex = None
                 cpu_nonce_hex = None
+                block_header_hex = None
 
                 # Log mining iteration start (every 1000 iterations to avoid spam)
                 if hash_count % 1000 == 0:
@@ -1130,31 +1131,30 @@ class Miner:
                             if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
                                 self.log.error(f"GPU mining: Failed to build block header (iteration {hash_count}): {e}")
                                 self.log.error(f"GPU mining: Block header fields: prev_hash={'present' if prev_hash else 'MISSING'} (length={len(prev_hash) if prev_hash else 0}), merkle_root={'present' if merkle_root else 'MISSING'} (length={len(merkle_root) if merkle_root else 0}), ntime={'present' if ntime else 'MISSING'} (length={len(ntime) if ntime else 0}), nbits={'present' if nbits else 'MISSING'} (length={len(nbits) if nbits else 0})")
+                            block_header_hex = None
                     hash_hex = None
                     nonce_hex = None
-                    # Continue to CPU mining if enabled
-                    block_header_hex = None
+                    
+                    # Use sequential nonce counter for better coverage (cycles through 2^32)
+                    # Use batch_size from config instead of hardcoded value
+                    num_nonces_per_batch = self.cfg.get("compute", {}).get(
+                        "batch_size", 256
+                    )
+                    if hash_count % 1000 == 0:
+                        self.log.debug(f"GPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.gpu_nonce_counter}")
 
-                # Use sequential nonce counter for better coverage (cycles through 2^32)
-                # Use batch_size from config instead of hardcoded value
-                num_nonces_per_batch = self.cfg.get("compute", {}).get(
-                    "batch_size", 256
-                )
-                if hash_count % 1000 == 0:
-                    self.log.debug(f"GPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.gpu_nonce_counter}")
-
-                # Try GPU batch hashing (use sequential nonce counter for better coverage)
-                if block_header_hex is None:
-                    # Block header build failed, skip GPU mining
-                    if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
-                        self.log.warning(f"GPU mining: Skipping due to block header build failure (iteration {hash_count})")
-                    hash_hex = None
-                    nonce_hex = None
-                    # CRITICAL: If CPU mining is also disabled, increment hash_count here
-                    if not cpu_mining_enabled:
-                        hash_count += 1
-                        self.total_hash_count += 1
-                        update_status("total_hashes", self.total_hash_count)
+                    # Try GPU batch hashing (use sequential nonce counter for better coverage)
+                    if block_header_hex is None:
+                        # Block header build failed, skip GPU mining
+                        if hash_count % 100 == 0:  # Log every 100 iterations to avoid spam
+                            self.log.warning(f"GPU mining: Skipping due to block header build failure (iteration {hash_count})")
+                        hash_hex = None
+                        nonce_hex = None
+                        # CRITICAL: If CPU mining is also disabled, increment hash_count here
+                        if not cpu_mining_enabled:
+                            hash_count += 1
+                            self.total_hash_count += 1
+                            update_status("total_hashes", self.total_hash_count)
                     else:
                         try:
                             batch_start_time = time.time()

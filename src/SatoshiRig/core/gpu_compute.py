@@ -42,7 +42,7 @@ except Exception as e:
     logger.warning(f"PyOpenCL import failed: {e}")
 
 
-# CUDA SHA256 Kernel - VOLLSTÄNDIGE IMPLEMENTIERUNG
+# CUDA SHA256 Kernel - COMPLETE IMPLEMENTATION
 CUDA_SHA256_KERNEL = """
 #include <cuda_runtime.h>
 #include <stdint.h>
@@ -428,7 +428,7 @@ class CUDAMiner:
         self.cleanup()
 
 
-# OpenCL SHA256 Kernel - VOLLSTÄNDIGE IMPLEMENTIERUNG
+# OpenCL SHA256 Kernel - COMPLETE IMPLEMENTATION
 OPENCL_SHA256_KERNEL = """
 #pragma OPENCL EXTENSION cl_khr_byte_addressable_store : enable
 

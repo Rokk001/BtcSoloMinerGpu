@@ -2408,8 +2408,8 @@ INDEX_HTML = """
                                 <option value="cuda">CUDA</option>
                                 <option value="opencl">OpenCL</option>
                             </select>
-                            <small style="display: block; margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.875rem;">
-                                Backend für GPU-Mining. CPU-Mining wird über den Toggle unten gesteuert.
+                                <small style="display: block; margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.875rem;">
+                                Backend for GPU mining. CPU mining is controlled with the toggle below.
                             </small>
                         </div>
                         <div class="setting-item">

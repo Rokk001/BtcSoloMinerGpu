@@ -1,6 +1,7 @@
 """
 GPU Compute Module for CUDA and OpenCL support
 """
+
 import binascii
 import hashlib
 import logging
@@ -14,8 +15,11 @@ logger = logging.getLogger("SatoshiRig.gpu")
 try:
     import pycuda.driver as cuda
     from pycuda.compiler import SourceModule
+
     CUDA_AVAILABLE = True
-    logger.debug("PyCUDA imported successfully (autoinit will be called during initialization)")
+    logger.debug(
+        "PyCUDA imported successfully (autoinit will be called during initialization)"
+    )
 except ImportError as e:
     CUDA_AVAILABLE = False
     cuda = None
@@ -30,6 +34,7 @@ except Exception as e:
 # Try to import OpenCL
 try:
     import pyopencl as cl
+
     OPENCL_AVAILABLE = True
     logger.debug("PyOpenCL imported successfully")
 except ImportError as e:
@@ -224,18 +229,24 @@ __global__ void mine_sha256(
 
 class CUDAMiner:
     """CUDA-based GPU miner"""
-    
-    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None, batch_size: int = 256, max_workers: int = 8):
+
+    def __init__(
+        self,
+        device_id: int = 0,
+        logger: Optional[logging.Logger] = None,
+        batch_size: int = 256,
+        max_workers: int = 8,
+    ):
         self.device_id = device_id
         self.log = logger or logging.getLogger("SatoshiRig.gpu.cuda")
         self.context = None
         self.device = None
         self.batch_size = batch_size
         self.max_workers = max_workers
-        
+
         if not CUDA_AVAILABLE:
             raise RuntimeError("PyCUDA not available. Install with: pip install pycuda")
-        
+
         try:
             # Initialize CUDA (equivalent to pycuda.autoinit, but only when needed)
             # Try to get device count - if it fails, CUDA is not initialized
@@ -246,34 +257,42 @@ class CUDAMiner:
                 # CUDA not initialized, initialize it
                 cuda.init()
                 device_count = cuda.Device.count()
-            
+
             self.log.debug(f"CUDA initialized, device count: {device_count}")
-            
+
             if device_count == 0:
-                raise RuntimeError("No CUDA devices found. Make sure NVIDIA GPU is available and container is run with --runtime=nvidia or --gpus")
-            
+                raise RuntimeError(
+                    "No CUDA devices found. Make sure NVIDIA GPU is available and container is run with --runtime=nvidia or --gpus"
+                )
+
             if device_id >= cuda.Device.count():
-                self.log.warning(f"Device ID {device_id} not available (only {cuda.Device.count()} devices), using device 0")
+                self.log.warning(
+                    f"Device ID {device_id} not available (only {cuda.Device.count()} devices), using device 0"
+                )
                 device_id = 0
-            
+
             self.device = cuda.Device(device_id)
             self.context = self.device.make_context()
             device_name = self.device.name()
             self.log.info(f"CUDA device {device_id} initialized: {device_name}")
-            
+
             # Get device properties for debugging
             props = self.device.get_attributes()
             self.log.debug(f"CUDA device {device_id} properties: {props}")
         except Exception as e:
             # Check if it's a CUDA-specific error
-            if cuda and hasattr(cuda, 'Error') and isinstance(e, cuda.Error):
+            if cuda and hasattr(cuda, "Error") and isinstance(e, cuda.Error):
                 self.log.error(f"CUDA error initializing device {device_id}: {e}")
-                raise RuntimeError(f"CUDA initialization failed: {e}. Make sure container is run with --runtime=nvidia or --gpus and NVIDIA drivers are installed.")
+                raise RuntimeError(
+                    f"CUDA initialization failed: {e}. Make sure container is run with --runtime=nvidia or --gpus and NVIDIA drivers are installed."
+                )
             # Generic error
             self.log.error(f"Failed to initialize CUDA device {device_id}: {e}")
             raise RuntimeError(f"CUDA initialization failed: {e}")
-    
-    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0) -> Optional[Tuple[str, int]]:
+
+    def hash_block_header(
+        self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0
+    ) -> Optional[Tuple[str, int]]:
         """
         Hash block header with multiple nonces on GPU - ECHTE GPU-NUTZUNG
         Args:
@@ -288,9 +307,9 @@ class CUDAMiner:
             if len(block_header) != 80:
                 self.log.error(f"Invalid block header length: {len(block_header)}")
                 return None
-            
+
             # Compile CUDA kernel if not already compiled
-            if not hasattr(self, '_kernel') or self._kernel is None:
+            if not hasattr(self, "_kernel") or self._kernel is None:
                 try:
                     mod = SourceModule(CUDA_SHA256_KERNEL)
                     self._kernel = mod.get_function("mine_sha256")
@@ -298,22 +317,27 @@ class CUDAMiner:
                 except Exception as e:
                     self.log.error(f"Failed to compile CUDA kernel: {e}")
                     return None
-            
+
             import struct
+
             try:
                 import numpy as np
             except ImportError:
-                self.log.error("numpy is required for CUDA GPU mining. Install with: pip install numpy")
+                self.log.error(
+                    "numpy is required for CUDA GPU mining. Install with: pip install numpy"
+                )
                 return None
-            
+
             # Validate input parameters
             if num_nonces <= 0:
                 self.log.error(f"Invalid num_nonces: {num_nonces} (must be > 0)")
                 return None
             if start_nonce < 0 or start_nonce >= 2**32:
-                self.log.error(f"Invalid start_nonce: {start_nonce} (must be 0-{2**32-1})")
+                self.log.error(
+                    f"Invalid start_nonce: {start_nonce} (must be 0-{2**32-1})"
+                )
                 return None
-            
+
             # Prepare block headers (one per nonce)
             base_header = bytearray(block_header)
             headers = []
@@ -321,56 +345,58 @@ class CUDAMiner:
             for i in range(num_nonces):
                 nonce = (start_nonce + i) % (2**32)
                 header_copy = base_header.copy()
-                header_copy[76:80] = struct.pack('<I', nonce)
+                header_copy[76:80] = struct.pack("<I", nonce)
                 headers.append(bytes(header_copy))
                 nonces.append(nonce)
-            
+
             # Allocate GPU memory
             headers_gpu = None
             nonces_gpu = None
             results_gpu = None
-            
+
             try:
                 headers_gpu = cuda.mem_alloc(80 * num_nonces)
                 nonces_gpu = cuda.mem_alloc(4 * num_nonces)
                 results_gpu = cuda.mem_alloc(32 * num_nonces)
-                
+
                 # Copy data to GPU
-                headers_array = np.frombuffer(b''.join(headers), dtype=np.uint8)
+                headers_array = np.frombuffer(b"".join(headers), dtype=np.uint8)
                 nonces_array = np.array(nonces, dtype=np.uint32)
-                
+
                 cuda.memcpy_htod(headers_gpu, headers_array)
                 cuda.memcpy_htod(nonces_gpu, nonces_array)
-                
+
                 # Launch kernel
                 # Use 256 threads per block (optimal for most GPUs)
                 threads_per_block = 256
-                blocks_per_grid = (num_nonces + threads_per_block - 1) // threads_per_block
-                
+                blocks_per_grid = (
+                    num_nonces + threads_per_block - 1
+                ) // threads_per_block
+
                 self._kernel(
                     headers_gpu,
                     nonces_gpu,
                     results_gpu,
                     np.int32(num_nonces),
                     block=(threads_per_block, 1, 1),
-                    grid=(blocks_per_grid, 1)
+                    grid=(blocks_per_grid, 1),
                 )
-                
+
                 # Synchronize to ensure kernel execution is complete before copying results
                 cuda.Context.synchronize()
-                
+
                 # Copy results back from GPU
                 results_array = np.empty(32 * num_nonces, dtype=np.uint8)
                 cuda.memcpy_dtoh(results_array, results_gpu)
-                
+
                 # Find best hash
                 best_hash = None
                 best_nonce = None
-                
+
                 for i in range(num_nonces):
-                    hash_bytes = results_array[i*32:(i+1)*32]
+                    hash_bytes = results_array[i * 32 : (i + 1) * 32]
                     hash_hex = binascii.hexlify(hash_bytes).decode()
-                    
+
                     # Compare numerically (not as strings!)
                     if best_hash is None:
                         best_hash = hash_hex
@@ -387,7 +413,7 @@ class CUDAMiner:
                             if hash_hex < best_hash:
                                 best_hash = hash_hex
                                 best_nonce = nonces[i]
-                
+
                 return (best_hash, best_nonce) if best_hash else None
             finally:
                 # Free GPU memory (always, even on exception)
@@ -406,13 +432,14 @@ class CUDAMiner:
                         results_gpu.free()
                     except Exception:
                         pass
-            
+
         except Exception as e:
             self.log.error(f"CUDA hash error: {e}")
             import traceback
+
             self.log.debug(traceback.format_exc())
             return None
-    
+
     def cleanup(self):
         """Clean up CUDA context"""
         if self.context:
@@ -423,7 +450,7 @@ class CUDAMiner:
                 if self.log:
                     self.log.debug(f"Error during CUDA context cleanup: {e}")
                 pass
-    
+
     def __del__(self):
         self.cleanup()
 
@@ -609,8 +636,14 @@ __kernel void mine_sha256(
 
 class OpenCLMiner:
     """OpenCL-based GPU miner"""
-    
-    def __init__(self, device_id: int = 0, logger: Optional[logging.Logger] = None, batch_size: int = 256, max_workers: int = 8):
+
+    def __init__(
+        self,
+        device_id: int = 0,
+        logger: Optional[logging.Logger] = None,
+        batch_size: int = 256,
+        max_workers: int = 8,
+    ):
         self.device_id = device_id
         self.log = logger or logging.getLogger("SatoshiRig.gpu.opencl")
         self.context = None
@@ -620,32 +653,34 @@ class OpenCLMiner:
         self.max_workers = max_workers
         self._program = None
         self._kernel = None
-        
+
         if not OPENCL_AVAILABLE:
-            raise RuntimeError("PyOpenCL not available. Install with: pip install pyopencl")
-        
+            raise RuntimeError(
+                "PyOpenCL not available. Install with: pip install pyopencl"
+            )
+
         try:
             platforms = cl.get_platforms()
             if not platforms:
                 raise RuntimeError("No OpenCL platforms found")
-            
+
             # Try to find GPU device
             devices = []
             for platform in platforms:
                 devices.extend(platform.get_devices(cl.device_type.GPU))
-            
+
             if not devices:
                 raise RuntimeError("No OpenCL GPU devices found")
-            
+
             if device_id >= len(devices):
                 self.log.warning(f"Device ID {device_id} not available, using device 0")
                 device_id = 0
-            
+
             self.device = devices[device_id]
             self.context = cl.Context([self.device])
             self.queue = cl.CommandQueue(self.context)
             self.log.info(f"OpenCL device {device_id} initialized: {self.device.name}")
-            
+
             # Compile OpenCL kernel
             try:
                 self._program = cl.Program(self.context, OPENCL_SHA256_KERNEL).build()
@@ -654,12 +689,14 @@ class OpenCLMiner:
             except Exception as e:
                 self.log.error(f"Failed to compile OpenCL kernel: {e}")
                 raise RuntimeError(f"OpenCL kernel compilation failed: {e}")
-            
+
         except Exception as e:
             self.log.error(f"Failed to initialize OpenCL device {device_id}: {e}")
             raise
-    
-    def hash_block_header(self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0) -> Optional[Tuple[str, int]]:
+
+    def hash_block_header(
+        self, block_header_hex: str, num_nonces: int = 1024, start_nonce: int = 0
+    ) -> Optional[Tuple[str, int]]:
         """
         Hash block header with multiple nonces on GPU - ECHTE GPU-NUTZUNG
         Args:
@@ -674,26 +711,31 @@ class OpenCLMiner:
             if len(block_header) != 80:
                 self.log.error(f"Invalid block header length: {len(block_header)}")
                 return None
-            
+
             if self._kernel is None:
                 self.log.error("OpenCL kernel not compiled")
                 return None
-            
+
             import struct
+
             try:
                 import numpy as np
             except ImportError:
-                self.log.error("numpy is required for OpenCL GPU mining. Install with: pip install numpy")
+                self.log.error(
+                    "numpy is required for OpenCL GPU mining. Install with: pip install numpy"
+                )
                 return None
-            
+
             # Validate input parameters
             if num_nonces <= 0:
                 self.log.error(f"Invalid num_nonces: {num_nonces} (must be > 0)")
                 return None
             if start_nonce < 0 or start_nonce >= 2**32:
-                self.log.error(f"Invalid start_nonce: {start_nonce} (must be 0-{2**32-1})")
+                self.log.error(
+                    f"Invalid start_nonce: {start_nonce} (must be 0-{2**32-1})"
+                )
                 return None
-            
+
             # Prepare block headers (one per nonce)
             base_header = bytearray(block_header)
             headers = []
@@ -701,20 +743,30 @@ class OpenCLMiner:
             for i in range(num_nonces):
                 nonce = (start_nonce + i) % (2**32)
                 header_copy = base_header.copy()
-                header_copy[76:80] = struct.pack('<I', nonce)
+                header_copy[76:80] = struct.pack("<I", nonce)
                 headers.append(bytes(header_copy))
                 nonces.append(nonce)
-            
+
             # Allocate OpenCL buffers
             headers_buf = None
             nonces_buf = None
             results_buf = None
-            
+
             try:
-                headers_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=b''.join(headers))
-                nonces_buf = cl.Buffer(self.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(nonces, dtype=np.uint32))
-                results_buf = cl.Buffer(self.context, cl.mem_flags.WRITE_ONLY, 32 * num_nonces)
-                
+                headers_buf = cl.Buffer(
+                    self.context,
+                    cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                    hostbuf=b"".join(headers),
+                )
+                nonces_buf = cl.Buffer(
+                    self.context,
+                    cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                    hostbuf=np.array(nonces, dtype=np.uint32),
+                )
+                results_buf = cl.Buffer(
+                    self.context, cl.mem_flags.WRITE_ONLY, 32 * num_nonces
+                )
+
                 # Launch kernel
                 self._kernel(
                     self.queue,
@@ -723,27 +775,27 @@ class OpenCLMiner:
                     headers_buf,
                     nonces_buf,
                     results_buf,
-                    np.int32(num_nonces)
+                    np.int32(num_nonces),
                 )
-                
+
                 # Wait for kernel to finish
                 self.queue.finish()
-                
+
                 # Copy results back from GPU
                 results_array = np.empty(32 * num_nonces, dtype=np.uint8)
                 cl.enqueue_copy(self.queue, results_array, results_buf)
-                
+
                 # Wait for copy to finish (CRITICAL: ensure data is ready)
                 self.queue.finish()
-                
+
                 # Find best hash
                 best_hash = None
                 best_nonce = None
-                
+
                 for i in range(num_nonces):
-                    hash_bytes = results_array[i*32:(i+1)*32]
+                    hash_bytes = results_array[i * 32 : (i + 1) * 32]
                     hash_hex = binascii.hexlify(hash_bytes).decode()
-                    
+
                     # Compare numerically (not as strings!)
                     if best_hash is None:
                         best_hash = hash_hex
@@ -760,7 +812,7 @@ class OpenCLMiner:
                             if hash_hex < best_hash:
                                 best_hash = hash_hex
                                 best_nonce = nonces[i]
-                
+
                 return (best_hash, best_nonce) if best_hash else None
             finally:
                 # Free OpenCL buffers (always, even on exception)
@@ -779,13 +831,14 @@ class OpenCLMiner:
                         results_buf.release()
                     except Exception:
                         pass
-            
+
         except Exception as e:
             self.log.error(f"OpenCL hash error: {e}")
             import traceback
+
             self.log.debug(traceback.format_exc())
             return None
-    
+
     def cleanup(self):
         """Clean up OpenCL context and queue"""
         if self.queue:
@@ -797,7 +850,7 @@ class OpenCLMiner:
                 pass
             finally:
                 self.queue = None
-        
+
         if self.context:
             try:
                 # OpenCL contexts are automatically cleaned up when garbage collected
@@ -810,34 +863,49 @@ class OpenCLMiner:
             finally:
                 self.context = None
                 self.device = None
-    
+
     def __del__(self):
         """Destructor - ensures cleanup on object deletion"""
         self.cleanup()
 
 
-def create_gpu_miner(backend: str, device_id: int = 0, logger: Optional[logging.Logger] = None, batch_size: int = 256, max_workers: int = 8):
+def create_gpu_miner(
+    backend: str,
+    device_id: int = 0,
+    logger: Optional[logging.Logger] = None,
+    batch_size: int = 256,
+    max_workers: int = 8,
+):
     """
     Create a GPU miner instance based on backend type
-    
+
     Args:
         backend: 'cuda' or 'opencl'
         device_id: GPU device index
         logger: Optional logger instance
         batch_size: Number of nonces per batch (default: 256)
         max_workers: Maximum number of parallel workers (default: 8)
-    
+
     Returns:
         CUDAMiner or OpenCLMiner instance
     """
     if backend == "cuda":
         if not CUDA_AVAILABLE:
             raise RuntimeError("CUDA backend requested but PyCUDA not available")
-        return CUDAMiner(device_id=device_id, logger=logger, batch_size=batch_size, max_workers=max_workers)
+        return CUDAMiner(
+            device_id=device_id,
+            logger=logger,
+            batch_size=batch_size,
+            max_workers=max_workers,
+        )
     elif backend == "opencl":
         if not OPENCL_AVAILABLE:
             raise RuntimeError("OpenCL backend requested but PyOpenCL not available")
-        return OpenCLMiner(device_id=device_id, logger=logger, batch_size=batch_size, max_workers=max_workers)
+        return OpenCLMiner(
+            device_id=device_id,
+            logger=logger,
+            batch_size=batch_size,
+            max_workers=max_workers,
+        )
     else:
         raise ValueError(f"Unknown backend: {backend}")
-

@@ -2,7 +2,15 @@
 
 Updated: 2025-01-27
 
-## Latest Changes (v2.25.19)
+## Latest Changes (v2.25.20)
+- **Dynamic Web Module Import Fix**: Fixed issue where `update_status` and `update_pool_status` would use dummy functions even after web module was initialized
+  - Replaced static import with dynamic lazy-loading mechanism
+  - Functions now check if web module is available on each call
+  - If web module becomes available later (e.g., during startup), functions automatically switch to real implementations
+  - Prevents status updates from being silently ignored when web module initializes after miner module
+  - Ensures dashboard receives all status updates even when modules load in different order
+
+## Previous Changes (v2.25.19)
 - **Mining Loop Debugging Improvements**: Added critical initialization and INFO-level logging to diagnose mining loop issues
   - Initialize `merkle_root = None` at the start of each loop iteration to prevent NameError
   - Added INFO-level logs immediately after "Mining iteration 0" to track loop progress

@@ -5,6 +5,16 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.20] - 2025-01-27
+
+### Fixed
+- **Dynamic Web Module Import Fix**: Fixed issue where `update_status` and `update_pool_status` would use dummy functions even after web module was initialized
+  - Replaced static import with dynamic lazy-loading mechanism
+  - Functions now check if web module is available on each call
+  - If web module becomes available later (e.g., during startup), functions automatically switch to real implementations
+  - Prevents status updates from being silently ignored when web module initializes after miner module
+  - Ensures dashboard receives all status updates even when modules load in different order
+
 ## [2.25.19] - 2025-01-27
 
 ### Added

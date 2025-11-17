@@ -2032,51 +2032,84 @@ class Miner:
                         pass
                     # Use a batched nonce loop for CPU mining to ensure we try many nonces per iteration
                     try:
-                        _vlog(self.log, self._verbose_logging, "LOOP: entering try block for CPU mining (batched)")
-                        _vlog(self.log, self._verbose_logging, "LOOP: acquiring state._lock for CPU mining")
+                        _vlog(
+                            self.log,
+                            self._verbose_logging,
+                            "LOOP: entering try block for CPU mining (batched)",
+                        )
+                        _vlog(
+                            self.log,
+                            self._verbose_logging,
+                            "LOOP: acquiring state._lock for CPU mining",
+                        )
                         with self.state._lock:
                             prev_hash = self.state.prev_hash
                             ntime = self.state.ntime
                             nbits = self.state.nbits
-                        _vlog(self.log, self._verbose_logging, "LOOP: released state._lock for CPU mining")
+                        _vlog(
+                            self.log,
+                            self._verbose_logging,
+                            "LOOP: released state._lock for CPU mining",
+                        )
 
                         # Build a block header base with nonce set to 00000000, then iterate a batch of nonces
-                        block_header_base = self._build_block_header(prev_hash, merkle_root, ntime, nbits, "00000000")
+                        block_header_base = self._build_block_header(
+                            prev_hash, merkle_root, ntime, nbits, "00000000"
+                        )
                         block_header_hex = block_header_base
 
-                        num_nonces_per_batch = self.cfg.get("compute", {}).get("batch_size", 256)
-                        if not isinstance(num_nonces_per_batch, int) or num_nonces_per_batch <= 0:
+                        num_nonces_per_batch = self.cfg.get("compute", {}).get(
+                            "batch_size", 256
+                        )
+                        if (
+                            not isinstance(num_nonces_per_batch, int)
+                            or num_nonces_per_batch <= 0
+                        ):
                             num_nonces_per_batch = 1
 
                         if hash_count % 1000 == 0:
-                            self.log.debug(f"CPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.cpu_nonce_counter}")
+                            self.log.debug(
+                                f"CPU batch mining: num_nonces={num_nonces_per_batch}, start_nonce={self.cpu_nonce_counter}"
+                            )
 
                         cpu_found = False
                         cpu_hash_hex = None
                         cpu_nonce_hex = None
 
                         for i_nonce in range(num_nonces_per_batch):
-                            nonce_int = (self.cpu_nonce_counter + i_nonce) % (2 ** 32)
+                            nonce_int = (self.cpu_nonce_counter + i_nonce) % (2**32)
                             try:
-                                trial_nonce_hex = self._int_to_little_endian_hex(nonce_int, 4)
+                                trial_nonce_hex = self._int_to_little_endian_hex(
+                                    nonce_int, 4
+                                )
                             except (ValueError, TypeError):
                                 continue
 
-                            trial_block_header_hex = block_header_hex[:-8] + trial_nonce_hex
+                            trial_block_header_hex = (
+                                block_header_hex[:-8] + trial_nonce_hex
+                            )
                             try:
-                                trial_block_header_bytes = binascii.unhexlify(trial_block_header_hex)
+                                trial_block_header_bytes = binascii.unhexlify(
+                                    trial_block_header_hex
+                                )
                             except binascii.Error:
                                 hash_count += 1
                                 self.total_hash_count += 1
                                 update_status("total_hashes", self.total_hash_count)
                                 continue
 
-                            cpu_hash_intermediate = hashlib.sha256(trial_block_header_bytes).digest()
-                            cpu_hash_bin = hashlib.sha256(cpu_hash_intermediate).digest()
+                            cpu_hash_intermediate = hashlib.sha256(
+                                trial_block_header_bytes
+                            ).digest()
+                            cpu_hash_bin = hashlib.sha256(
+                                cpu_hash_intermediate
+                            ).digest()
 
                             try:
                                 cpu_hash_big = binascii.hexlify(cpu_hash_bin).decode()
-                                cpu_hash_little = self._hex_to_little_endian(cpu_hash_big, 64)
+                                cpu_hash_little = self._hex_to_little_endian(
+                                    cpu_hash_big, 64
+                                )
                             except Exception:
                                 hash_count += 1
                                 self.total_hash_count += 1
@@ -2096,11 +2129,13 @@ class Miner:
                                 cpu_found = True
                                 cpu_hash_hex = cpu_hash_little
                                 cpu_nonce_hex = trial_nonce_hex
-                                self.cpu_nonce_counter = (nonce_int + 1) % (2 ** 32)
+                                self.cpu_nonce_counter = (nonce_int + 1) % (2**32)
                                 break
 
                         if not cpu_found:
-                            self.cpu_nonce_counter = (self.cpu_nonce_counter + num_nonces_per_batch) % (2 ** 32)
+                            self.cpu_nonce_counter = (
+                                self.cpu_nonce_counter + num_nonces_per_batch
+                            ) % (2**32)
 
                     except Exception as e:
                         # Catch ALL unexpected errors in CPU mining to ensure loop continues

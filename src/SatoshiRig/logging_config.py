@@ -9,12 +9,12 @@ def configure_logging(
     """Configure root logging for the application.
 
     - `level`: string like 'INFO' or 'DEBUG'. If None, will use env LOG_LEVEL or 'INFO'.
-    - `log_file`: optional path for rotating file logging. If None, only stdout/stderr used.
+    - `log_file`: DEPRECATED - ignored. All logs go to stdout/stderr for Docker logs.
     - `verbose`: if True, enables more verbose internal debug logs.
     """
     # Resolve defaults from environment
     level = (level or os.environ.get("LOG_LEVEL") or "INFO").upper()
-    log_file = log_file or os.environ.get("LOG_FILE")
+    # log_file is ignored - all logs go to stdout/stderr for Docker
 
     level_const = getattr(logging, level, logging.INFO)
 
@@ -40,19 +40,7 @@ def configure_logging(
         )
         root.addHandler(sh)
 
-    # Add a RotatingFileHandler if requested
-    if log_file:
-        try:
-            fh = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
-            fh.setLevel(level_const)
-            fh.setFormatter(
-                logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
-            )
-            root.addHandler(fh)
-        except Exception as e:
-            logging.getLogger("SatoshiRig.logging_config").warning(
-                f"Failed to create file handler {log_file}: {e}"
-            )
+    # FileHandler is NOT created - all logs go to stdout/stderr for Docker logs
 
     # Optionally enable very verbose internal debug logs
     if verbose:

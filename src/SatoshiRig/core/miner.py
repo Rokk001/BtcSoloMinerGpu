@@ -439,6 +439,13 @@ class Miner:
         return block_header
 
     def start(self):
+        # Add INFO-level logging immediately
+        self.log.info("=" * 80)
+        self.log.info("Miner.start() called")
+        self.log.info(f"Wallet: {self.wallet[:10]}...{self.wallet[-10:]}")
+        self.log.info(f"Pool: {self.pool.host}:{self.pool.port}")
+        self.log.info("=" * 80)
+        
         # Prevent multiple calls to start()
         if self._running:
             self.log.warning(
@@ -446,6 +453,7 @@ class Miner:
             )
             return
         self._running = True
+        self.log.info("Miner._running flag set to True")
 
         try:
             # Check if pool is already connected (e.g., from connect_to_pool_only())
@@ -637,6 +645,9 @@ class Miner:
                             "No mining state received after waiting, starting mining loop anyway"
                         )
 
+            self.log.info("=" * 80)
+            self.log.info("All initialization complete, entering mining loop")
+            self.log.info("=" * 80)
             self.log.info("Starting mining loop...")
             self.log.debug("Entering main mining loop")
             return self._mine_loop()
@@ -1059,7 +1070,13 @@ class Miner:
                 f"Initial state details: job_id={self.state.job_id}, version={self.state.version}, coinbase_part1 length={len(self.state.coinbase_part1) if self.state.coinbase_part1 else 0}, coinbase_part2 length={len(self.state.coinbase_part2) if self.state.coinbase_part2 else 0}, merkle_branch length={len(self.state.merkle_branch) if self.state.merkle_branch else 0}"
             )
 
+        self.log.info("=" * 80)
+        self.log.info("_mine_loop() entered")
+        self.log.info("=" * 80)
         self.log.info("Starting hash computation loop")
+        self.log.info("=" * 80)
+        self.log.info("Entering main mining while loop")
+        self.log.info("=" * 80)
 
         while True:
             # CRITICAL: Wrap entire loop iteration in try-except to ensure loop always progresses

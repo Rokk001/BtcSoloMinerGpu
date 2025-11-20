@@ -1230,8 +1230,8 @@ def update_logging_level(log_level: str, log_file: str = None):
     try:
         from ..logging_config import configure_logging
 
-        # configure_logging will set root level and handlers
-        configure_logging(level=log_level, log_file=log_file)
+        # configure_logging ignores log_file parameter - all logs go to stdout/stderr
+        configure_logging(level=log_level, log_file=None)  # Explicitly pass None
     except Exception:
         # Fallback: do a minimal level update if helper fails
         import logging
@@ -1342,7 +1342,7 @@ def get_config_for_ui() -> dict:
                 "rpc_user": "",
                 "rpc_password": "",
             },
-            "logging": {"file": "miner.log", "level": "INFO"},
+            "logging": {"level": "INFO"},
             "miner": {
                 "restart_delay_secs": 2,
                 "subscribe_thread_start_delay_secs": 4,
@@ -2479,13 +2479,7 @@ INDEX_HTML = """
                                 Controls the verbosity of log messages. DEBUG provides the most detailed logging.
                             </small>
                         </div>
-                        <div class="setting-item">
-                            <label for="logging-file">Log File:</label>
-                            <input type="text" id="logging-file" placeholder="miner.log">
-                            <small style="display: block; margin-top: 0.25rem; color: var(--text-secondary); font-size: 0.875rem;">
-                                Path to the log file (relative to the working directory).
-                            </small>
-                        </div>
+                        <!-- Log File input removed - all logs go to Docker logs (stdout/stderr) -->
                     </div>
                 </div>
                 
@@ -2717,29 +2711,67 @@ INDEX_HTML = """
         let miningPaused = false;
 
         function toggleMining() {
-            if (miningPaused) {
-                // Resume mining
-                fetch('/api/start', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            miningPaused = false;
-                            document.getElementById('autoRefreshText').textContent = '⏸️ Pause';
-                        }
-                    })
-                    .catch(error => console.error('Error starting mining:', error));
-            } else {
-                // Pause/Stop mining
-                fetch('/api/stop', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            miningPaused = true;
-                            document.getElementById('autoRefreshText').textContent = '▶️ Resume';
-                        }
-                    })
-                    .catch(error => console.error('Error stopping mining:', error));
-            }
+            // Use current miningPaused state (inverted: paused = not running)
+            const isRunning = !miningPaused;
+                    
+            if (isRunning) {
+                        // Pause/Stop mining
+                        fetch('/api/stop', { 
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            credentials: 'same-origin'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                miningPaused = true;
+                                document.getElementById('autoRefreshText').textContent = '▶️ Resume';
+                                // Show success message
+                                console.log('Mining paused successfully');
+                            } else {
+                                // Show error message
+                                alert(`Failed to pause mining: ${data.message || data.error || 'Unknown error'}`);
+                                console.error('Error pausing mining:', data);
+                            }
+                        })
+                        .catch(error => {
+                            alert(`Error pausing mining: ${error.message}`);
+                            console.error('Error stopping mining:', error);
+                        });
+                    } else {
+                        // Resume/Start mining
+                        fetch('/api/start', { 
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            credentials: 'same-origin'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                miningPaused = false;
+                                document.getElementById('autoRefreshText').textContent = '⏸️ Pause';
+                                // Show success message
+                                console.log('Mining started/resumed successfully');
+                            } else {
+                                // Show error message
+                                alert(`Failed to start mining: ${data.message || data.error || 'Unknown error'}`);
+                                console.error('Error starting mining:', data);
+                            }
+                        })
+                        .catch(error => {
+                            alert(`Error starting mining: ${error.message}`);
+                            console.error('Error starting mining:', error);
+                        });
+                    }
+                })
+                .catch(error => {
+                    alert(`Error checking mining status: ${error.message}`);
+                    console.error('Error checking status:', error);
+                });
         }
 
         function toggleAutoRefresh() {
@@ -2834,7 +2866,7 @@ INDEX_HTML = """
                     
                     // Logging
                     document.getElementById('logging-level').value = config.logging?.level || 'INFO';
-                    document.getElementById('logging-file').value = config.logging?.file || 'miner.log';
+                    // Log file removed - all logs go to Docker logs (stdout/stderr)
                     
                     console.log('Configuration loaded successfully');
                 } else {
@@ -2866,7 +2898,7 @@ INDEX_HTML = """
                     rpc_password: document.getElementById('rpc-password').value
                 },
                 logging: {
-                    file: document.getElementById('logging-file').value || 'miner.log',
+                    // file removed - all logs go to Docker logs (stdout/stderr)
                     level: document.getElementById('logging-level').value || 'INFO'
                 },
                 miner: {
@@ -3005,6 +3037,8 @@ INDEX_HTML = """
         showTab(savedTab);
 
         socket.on('connect', () => {
+            // Request initial status on connect
+            socket.emit('get_status');
             startRefresh();
         });
 
@@ -3046,6 +3080,11 @@ INDEX_HTML = """
                 }
             }
 
+            // Update miningPaused based on actual server status
+            miningPaused = !(data.running || false);
+            const pauseText = miningPaused ? '▶️ Resume' : '⏸️ Pause';
+            document.getElementById('autoRefreshText').textContent = pauseText;
+            
             // Update status cards
             document.getElementById('runningStatus').textContent = data.running ? 'Running' : 'Stopped';
             document.getElementById('runningStatus').className = data.running ? 'status-value running' : 'status-value stopped';

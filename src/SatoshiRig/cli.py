@@ -45,6 +45,13 @@ def _handle_sigint(signal_received , frame) :
 
 
 def main() :
+    # Add INFO-level logging immediately (not just _vlog)
+    import logging
+    logger = logging.getLogger("SatoshiRig.cli")
+    logger.info("=" * 80)
+    logger.info("CLI main() called")
+    logger.info("=" * 80)
+    
     _vlog(_logger, _verbose_logging, "cli.main: START")
     _vlog(_logger, _verbose_logging, "cli.main: creating ArgumentParser")
     parser = argparse.ArgumentParser(prog = "satoshirig")
@@ -56,6 +63,9 @@ def main() :
     parser.add_argument("--no-web" , action = "store_true" , help = "Disable web dashboard")
     _vlog(_logger, _verbose_logging, "cli.main: parsing arguments")
     args = parser.parse_args()
+    
+    # Log CLI arguments at INFO level
+    logger.info(f"CLI arguments: wallet={'set' if args.wallet else 'not set'}, backend={args.backend}, gpu={args.gpu}, web_port={args.web_port}, no_web={args.no_web}")
     _vlog(_logger, _verbose_logging, f"cli.main: args parsed, wallet={args.wallet is not None}, backend={args.backend}, gpu={args.gpu}, web_port={args.web_port}, no_web={args.no_web}")
 
     _vlog(_logger, _verbose_logging, f"cli.main: checking args.backend: {args.backend is not None}")
@@ -69,10 +79,24 @@ def main() :
 
     _vlog(_logger, _verbose_logging, "cli.main: calling load_config()")
     cfg = load_config()
+    logger.info(f"Config loaded: wallet={'configured' if cfg.get('wallet', {}).get('address') else 'NOT configured'}")
     _vlog(_logger, _verbose_logging, f"cli.main: config loaded, keys={list(cfg.keys())}")
 
     _vlog(_logger, _verbose_logging, f"cli.main: getting wallet, args.wallet={args.wallet is not None}, cfg wallet={cfg.get('wallet', {}).get('address') is not None}")
     wallet_raw = args.wallet or cfg.get("wallet", {}).get("address")
+    
+    # If wallet is still empty, try loading directly from database
+    if not wallet_raw or not wallet_raw.strip():
+        _vlog(_logger, _verbose_logging, "cli.main: wallet not found in config, loading directly from database")
+        logger.info("Wallet not found in config, loading directly from database...")
+        from .db import get_value
+        wallet_raw = get_value("settings", "wallet_address")
+        _vlog(_logger, _verbose_logging, f"cli.main: wallet from DB={'present' if wallet_raw else 'None'}, length={len(wallet_raw) if wallet_raw else 0}")
+        # Update cfg with wallet from DB if found
+        if wallet_raw and wallet_raw.strip():
+            cfg.setdefault("wallet", {})["address"] = wallet_raw.strip()
+            logger.info(f"Wallet loaded from database: {wallet_raw[:10]}...{wallet_raw[-10:]}")
+    
     _vlog(_logger, _verbose_logging, f"cli.main: wallet_raw={'present' if wallet_raw else 'None'}, length={len(wallet_raw) if wallet_raw else 0}")
     wallet = wallet_raw.strip() if wallet_raw else None
     _vlog(_logger, _verbose_logging, f"cli.main: wallet={'present' if wallet else 'None'}, length={len(wallet) if wallet else 0}")
@@ -145,6 +169,14 @@ def main() :
             print("Missing wallet address. Provide with --wallet <ADDRESS> or set it in the web dashboard.")
             sys.exit(2)
 
+    # Log wallet status before continuing
+    if wallet:
+        logger.info(f"Wallet found: {wallet[:10]}...{wallet[-10:]}")
+        logger.info("Mining will start automatically")
+    else:
+        logger.warning("No wallet configured - only Web Dashboard will start")
+        logger.warning("Configure wallet in Web Dashboard and start mining manually")
+    
     _vlog(_logger, _verbose_logging, "cli.main: setting up logging for mining mode")
     log_level = getattr(logging , cfg.get("logging" , {}).get("level" , "INFO").upper() , logging.INFO)
     _vlog(_logger, _verbose_logging, f"cli.main: log_level={log_level}")

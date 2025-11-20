@@ -5,6 +5,36 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.24] - 2025-11-20
+
+### Changed
+- **Docker-First Logging**: Removed log file configuration from Settings UI - all logs now exclusively go to Docker logs (stdout/stderr)
+  - Removed "Log File" input field from Settings tab
+  - `configure_logging()` now ignores `log_file` parameter completely
+  - All logging handlers use StreamHandler only (no FileHandler)
+  - Simplifies Docker deployment - logs are visible via `docker logs` command
+
+### Added
+- **Enhanced Startup Logging**: Added comprehensive INFO-level logging at application startup
+  - `__main__.py`: Logs application start with banner
+  - `cli.py`: Logs CLI arguments, config status, wallet status, and mining start
+  - `miner.py`: Logs miner initialization, pool connection, and mining loop entry
+  - All startup logs are at INFO level (always visible, not just verbose mode)
+  - Helps diagnose why mining may not start by showing exact execution path
+
+### Fixed
+- **Pause Button Functionality**: Fixed Pause/Resume button in web dashboard
+  - Added proper request headers (`Content-Type`, `credentials`)
+  - Added error handling with user-visible alerts
+  - Status synchronization with server via SocketIO
+  - Button text updates automatically based on actual mining status
+  - Initial status request on page load/connect
+
+- **Wallet Loading from Database**: Improved wallet address loading
+  - If wallet not found in config, explicitly loads from database (`settings.wallet_address`)
+  - Ensures wallet configured in Web UI is used even if not in config file
+  - Logs wallet loading process for debugging
+
 ## [2.25.23] - 2025-11-20
 
 ### Added

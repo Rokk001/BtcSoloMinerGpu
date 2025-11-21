@@ -2,7 +2,12 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.30)
+## Latest Changes (v2.25.31)
+- **Enhanced CPU Mining Diagnostics**: Added INFO-level logging to diagnose mining loop hangs.
+  - Logs immediately after `_build_block_header` completion to verify the function completes.
+  - Logs batch completion status with nonce count and hash_count for better visibility into mining progress.
+
+## Previous Changes (v2.25.30)
 - **Maintenance Release**: Documentation updates and release preparation.
 
 ## Previous Changes (v2.25.29)

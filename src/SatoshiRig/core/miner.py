@@ -445,7 +445,7 @@ class Miner:
         self.log.info(f"Wallet: {self.wallet[:10]}...{self.wallet[-10:]}")
         self.log.info(f"Pool: {self.pool.host}:{self.pool.port}")
         self.log.info("=" * 80)
-        
+
         # Prevent multiple calls to start()
         if self._running:
             self.log.warning(
@@ -2078,6 +2078,11 @@ class Miner:
                         block_header_base = self._build_block_header(
                             prev_hash, merkle_root, ntime, nbits, "00000000"
                         )
+                        # CRITICAL: Add INFO log immediately after _build_block_header to verify it completes
+                        self.log.info(
+                            "CPU: _build_block_header completed, block_header_base length=%s",
+                            len(block_header_base) if block_header_base else 0
+                        )
                         block_header_hex = block_header_base
                         _vlog(
                             self.log,
@@ -2290,6 +2295,12 @@ class Miner:
                                 break
 
                         if not cpu_found:
+                            # CRITICAL: Add INFO log to verify batch completion
+                            self.log.info(
+                                "CPU: Batch completed, no share found. Processed %d nonces, hash_count=%d",
+                                num_nonces_per_batch,
+                                hash_count,
+                            )
                             _vlog(
                                 self.log,
                                 self._verbose_logging,

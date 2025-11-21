@@ -2,7 +2,12 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.26)
+## Latest Changes (v2.25.27)
+- **Socket.IO Client Bundled Locally**: Added `static/js/socket.io.min.js` to the repo and load it from Flask’s `/static` endpoint.
+  - Eliminates the CDN dependency so air‑gapped Docker deployments work out-of-the-box.
+  - Prevents HTTP 400 / “unsupported protocol version” errors and guarantees `io()` is defined before dashboard JS runs.
+
+## Previous Changes (v2.25.26)
 - **Socket.IO Client Served Locally**: Dashboard now pulls `socket.io.js` from the Flask server instead of an external CDN.
   - Fixes `io is not defined` errors when the container has no outbound internet access (typical Docker deployments).
   - Ensures the dashboard script always initializes so wallet/pool/hashrate data appears immediately.

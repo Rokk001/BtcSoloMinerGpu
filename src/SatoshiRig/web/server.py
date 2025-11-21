@@ -105,9 +105,11 @@ def update_performance_metrics():
                             else:
                                 gpu_memory = 0.0
                     except (pynvml.NVMLError, AttributeError, IndexError) as e:
-                        logging.debug(f"GPU monitoring error: {e}")
+                        # CRITICAL: Log as ERROR, not DEBUG, so we can see what's wrong
+                        logging.error(f"GPU monitoring error: {e}", exc_info=True)
             except Exception as e:
-                logging.debug(f"Unexpected GPU monitoring error: {e}")
+                # CRITICAL: Log as ERROR, not DEBUG, so we can see what's wrong
+                logging.error(f"Unexpected GPU monitoring error: {e}", exc_info=True)
 
         # Update STATUS with lock protection
         with STATUS_LOCK:
@@ -403,6 +405,48 @@ def start_mining():
 
     try:
         global _miner_state, _miner
+        import time
+
+        # CRITICAL FIX: Check if miner thread is still running
+        if _miner and _miner._running:
+            # Miner is already running, just clear shutdown flag
+            if not _miner_state:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "MinerStateNotAvailable",
+                            "message": "Miner state not available. Miner may not be running.",
+                        }
+                    ),
+                    503,
+                )
+            # Thread-safe shutdown flag update
+            with _miner_state._lock:
+                _miner_state.shutdown_flag = False
+            update_status("running", True)
+            return jsonify({"success": True, "message": "Mining resumed"})
+
+        # CRITICAL FIX: If miner exists but is stopped, wait for thread to finish
+        if _miner and not _miner._running:
+            # Give the old thread time to finish (max 3 seconds)
+            for _ in range(30):  # 30 * 0.1s = 3 seconds max wait
+                if not _miner._running:
+                    break
+                time.sleep(0.1)
+            
+            # If still running after wait, return error
+            if _miner._running:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "MinerStillStopping",
+                            "message": "Miner is still stopping. Please wait a moment and try again.",
+                        }
+                    ),
+                    409,  # Conflict
+                )
 
         # Check if miner instance exists
         if not _miner:
@@ -473,7 +517,7 @@ def start_mining():
                     500,
                 )
 
-        # Miner exists, just clear shutdown flag
+        # Miner exists but was stopped, restart it
         if not _miner_state:
             return (
                 jsonify(
@@ -486,9 +530,15 @@ def start_mining():
                 503,
             )
 
-        # Thread-safe shutdown flag update
+        # Clear shutdown flag and restart miner thread
         with _miner_state._lock:
             _miner_state.shutdown_flag = False
+        
+        # CRITICAL FIX: Only start new thread if old one is not running
+        if not _miner._running:
+            miner_thread = threading.Thread(target=_miner.start, daemon=True)
+            miner_thread.start()
+        
         update_status("running", True)
         return jsonify({"success": True, "message": "Mining resumed"})
     except Exception as e:
@@ -3139,7 +3189,8 @@ INDEX_HTML = """
             if (data.memory_usage !== undefined) {
                 document.getElementById('memoryUsage').textContent = data.memory_usage.toFixed(1) + '%';
             }
-            if (data.gpu_usage !== undefined && data.gpu_usage > 0) {
+            // Show GPU usage even if it's 0 (might be valid), but show N/A if undefined
+            if (data.gpu_usage !== undefined) {
                 document.getElementById('gpuUsage').textContent = data.gpu_usage.toFixed(1) + '%';
             } else {
                 document.getElementById('gpuUsage').textContent = 'N/A';

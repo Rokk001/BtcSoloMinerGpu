@@ -2,7 +2,23 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.39)
+## Latest Changes (v2.25.40)
+- **Critical Pause/Resume Crash Bug Fix**: Fixed crash when using Pause/Resume button that caused Docker container to crash with 502 Bad Gateway errors.
+  - `/api/start` was starting new miner threads without checking if old thread was still running.
+  - Multiple miner threads running simultaneously caused race conditions and container crashes.
+  - Fixed by checking if miner is already running before starting new thread.
+  - Fixed by waiting for old thread to finish before starting new one (max 3 seconds).
+  - Pause/Resume should now work correctly without crashing the container.
+
+- **GPU Usage Display Improvement**: Improved GPU usage display to show 0% instead of N/A when GPU usage is 0 (valid value).
+  - GPU usage now displays even when it's 0%, only shows N/A when undefined.
+  - Better visibility into GPU mining status.
+
+- **GPU Monitoring Logging Improvement**: Improved GPU monitoring error logging from DEBUG to ERROR level.
+  - GPU monitoring errors are now logged as ERROR with full stack traces.
+  - Enables better debugging of GPU monitoring issues.
+
+## Previous Changes (v2.25.39)
 - **Critical Deadlock Bug Fix**: Fixed deadlock that caused mining loop to hang after first iteration.
   - `update_status()` was calling `_auto_save_statistics()` while holding `STATUS_LOCK`.
   - `_auto_save_statistics()` tried to acquire `STATUS_LOCK` again, causing deadlock.

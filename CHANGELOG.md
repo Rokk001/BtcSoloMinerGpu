@@ -5,6 +5,25 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.40] - 2025-11-21
+
+### Fixed
+- **Critical Pause/Resume Crash Bug**: Fixed crash when using Pause/Resume button that caused Docker container to crash with 502 Bad Gateway errors.
+  - `/api/start` was starting new miner threads without checking if old thread was still running.
+  - Multiple miner threads running simultaneously caused race conditions and container crashes.
+  - Fixed by checking if miner is already running before starting new thread.
+  - Fixed by waiting for old thread to finish before starting new one (max 3 seconds).
+  - Pause/Resume should now work correctly without crashing the container.
+
+### Improved
+- **GPU Usage Display**: Improved GPU usage display to show 0% instead of N/A when GPU usage is 0 (valid value).
+  - GPU usage now displays even when it's 0%, only shows N/A when undefined.
+  - Better visibility into GPU mining status.
+
+- **GPU Monitoring Logging**: Improved GPU monitoring error logging from DEBUG to ERROR level.
+  - GPU monitoring errors are now logged as ERROR with full stack traces.
+  - Enables better debugging of GPU monitoring issues.
+
 ## [2.25.39] - 2025-11-21
 
 ### Fixed

@@ -2,7 +2,13 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.34)
+## Latest Changes (v2.25.35)
+- **Post-Hash-Comparison Loop Continuation Log**: Added INFO-level logging immediately after hash comparison to verify loop continues to next iteration.
+  - Logs after hash comparison for first 5 iterations to confirm loop progression.
+  - Enables identification of whether loop continues after hash validation or stalls at that point.
+  - Critical for debugging why mining loop appears to hang after first iteration.
+
+## Previous Changes (v2.25.34)
 - **Extended Loop Continuation Diagnostics**: Added INFO-level logging for second iteration and first 5 iterations to verify loop progression.
   - Logs when second iteration starts to confirm loop continues after first iteration.
   - Logs after int conversion for first 5 iterations to track hash processing.

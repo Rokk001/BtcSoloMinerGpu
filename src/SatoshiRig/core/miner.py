@@ -2342,7 +2342,7 @@ class Miner:
                                 self.log.info(
                                     "CPU: Second iteration started, nonce_int=%d, hash_count=%d",
                                     (self.cpu_nonce_counter + i_nonce) % (2**32),
-                                    hash_count
+                                    hash_count,
                                 )
 
                             # CRITICAL: Log progress periodically for visibility
@@ -2360,7 +2360,8 @@ class Miner:
                                 if i_nonce < 5:
                                     self.log.info(
                                         "CPU: Iteration %d: hash converted to int, cpu_hash_int=%d",
-                                        i_nonce, cpu_hash_int
+                                        i_nonce,
+                                        cpu_hash_int,
                                     )
                                 _vlog(
                                     self.log,
@@ -2410,7 +2411,10 @@ class Miner:
                             if i_nonce < 5:
                                 self.log.info(
                                     "CPU: Iteration %d: hash compared, cpu_hash_int=%d, target_int=%d, valid=%s",
-                                    i_nonce, cpu_hash_int, target_int, cpu_hash_int < target_int
+                                    i_nonce,
+                                    cpu_hash_int,
+                                    target_int,
+                                    cpu_hash_int < target_int,
                                 )
                             if cpu_hash_int < target_int:
                                 _vlog(
@@ -2426,6 +2430,13 @@ class Miner:
                                     f"LOOP: CPU nonce_counter updated to {self.cpu_nonce_counter}",
                                 )
                                 break
+                            
+                            # CRITICAL: Log after hash comparison to verify loop continues to next iteration
+                            if i_nonce < 5:
+                                self.log.info(
+                                    "CPU: Iteration %d: after hash comparison, continuing to next iteration",
+                                    i_nonce
+                                )
 
                         if not cpu_found:
                             # CRITICAL: Add INFO log to verify batch completion

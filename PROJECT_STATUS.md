@@ -2,7 +2,14 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.31)
+## Latest Changes (v2.25.32)
+- **Comprehensive CPU Mining Loop Diagnostics**: Added INFO-level logging throughout the nonce loop to diagnose hangs.
+  - Logs at loop start with batch_size, start_nonce, and hash_count.
+  - Logs progress every 50 iterations during the loop execution.
+  - Improved exception logging to always log first exception (not just every 100th iteration).
+  - Enables real-time visibility into CPU mining progress and identifies exactly where loops hang.
+
+## Previous Changes (v2.25.31)
 - **Enhanced CPU Mining Diagnostics**: Added INFO-level logging to diagnose mining loop hangs.
   - Logs immediately after `_build_block_header` completion to verify the function completes.
   - Logs batch completion status with nonce count and hash_count for better visibility into mining progress.

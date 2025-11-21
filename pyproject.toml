@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SatoshiRig"
-version = "2.25.31"
+version = "2.25.32"
 description = "Bitcoin solo miner with configurable backends and Docker support"
 readme = "README.md"
 requires-python = ">=3.11"

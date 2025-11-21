@@ -5,6 +5,15 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.32] - 2025-11-21
+
+### Added
+- **Comprehensive CPU Mining Loop Diagnostics**: Added INFO-level logging throughout the nonce loop to diagnose hangs.
+  - Logs at loop start with batch_size, start_nonce, and hash_count.
+  - Logs progress every 50 iterations during the loop.
+  - Improved exception logging to always log first exception (not just every 100th).
+  - Enables real-time visibility into CPU mining progress and identifies where loops hang.
+
 ## [2.25.31] - 2025-11-21
 
 ### Added

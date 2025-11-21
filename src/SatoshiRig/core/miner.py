@@ -2081,7 +2081,7 @@ class Miner:
                         # CRITICAL: Add INFO log immediately after _build_block_header to verify it completes
                         self.log.info(
                             "CPU: _build_block_header completed, block_header_base length=%s",
-                            len(block_header_base) if block_header_base else 0
+                            len(block_header_base) if block_header_base else 0,
                         )
                         block_header_hex = block_header_base
                         _vlog(
@@ -2117,6 +2117,14 @@ class Miner:
                             self.log,
                             self._verbose_logging,
                             f"LOOP: CPU initializing batch variables: cpu_found=False, cpu_hash_hex=None, cpu_nonce_hex=None, best_cpu_hash_int=None",
+                        )
+
+                        # CRITICAL: Log loop start for visibility
+                        self.log.info(
+                            "CPU: Starting nonce loop, batch_size=%d, start_nonce=%d, hash_count=%d",
+                            num_nonces_per_batch,
+                            self.cpu_nonce_counter,
+                            hash_count
                         )
 
                         for i_nonce in range(num_nonces_per_batch):
@@ -2232,6 +2240,15 @@ class Miner:
                                 self._verbose_logging,
                                 f"LOOP: CPU hash_count incremented to {hash_count}, total_hash_count={self.total_hash_count}",
                             )
+                            
+                            # CRITICAL: Log progress periodically for visibility
+                            if (i_nonce + 1) % 50 == 0:
+                                self.log.info(
+                                    "CPU: Progress %d/%d nonces, hash_count=%d",
+                                    i_nonce + 1,
+                                    num_nonces_per_batch,
+                                    hash_count
+                                )
 
                             try:
                                 cpu_hash_int = int(cpu_hash_little, 16)
@@ -2328,11 +2345,10 @@ class Miner:
                             self._verbose_logging,
                             f"LOOP: unexpected exception in CPU mining: {type(e).__name__}: {e}",
                         )
-                        if (
-                            hash_count % 100 == 0
-                        ):  # Log every 100 iterations to avoid spam
+                        # CRITICAL: Always log first exception, then throttle to avoid spam
+                        if hash_count == 0 or hash_count % 100 == 0:
                             self.log.error(
-                                f"CPU mining: Unexpected error (iteration {hash_count}): {e}",
+                                f"CPU mining: Unexpected error (hash_count={hash_count}): {e}",
                                 exc_info=True,
                             )
                         cpu_hash_hex = None

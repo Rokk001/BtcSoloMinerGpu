@@ -2128,6 +2128,16 @@ class Miner:
                         )
 
                         for i_nonce in range(num_nonces_per_batch):
+                            # CRITICAL: Log every iteration start to verify loop continues
+                            if i_nonce < 10 or (i_nonce + 1) % 50 == 0:
+                                self.log.info(
+                                    "CPU: Iteration %d/%d started, nonce_int=%d, hash_count=%d",
+                                    i_nonce,
+                                    num_nonces_per_batch - 1,
+                                    (self.cpu_nonce_counter + i_nonce) % (2**32),
+                                    hash_count
+                                )
+                            
                             # CRITICAL: Log first iteration start
                             if i_nonce == 0:
                                 self.log.info(
@@ -2430,12 +2440,12 @@ class Miner:
                                     f"LOOP: CPU nonce_counter updated to {self.cpu_nonce_counter}",
                                 )
                                 break
-                            
+
                             # CRITICAL: Log after hash comparison to verify loop continues to next iteration
                             if i_nonce < 5:
                                 self.log.info(
                                     "CPU: Iteration %d: after hash comparison, continuing to next iteration",
-                                    i_nonce
+                                    i_nonce,
                                 )
 
                         if not cpu_found:

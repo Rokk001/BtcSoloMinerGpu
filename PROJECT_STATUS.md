@@ -2,7 +2,13 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.35)
+## Latest Changes (v2.25.36)
+- **Comprehensive Iteration Start Logging**: Added INFO-level logging at the start of every iteration (first 10 and every 50th) to verify loop progression.
+  - Logs iteration number, nonce_int, and hash_count at the start of each iteration.
+  - Enables real-time visibility into loop execution and confirms that mining loop continues beyond first iteration.
+  - Critical for debugging why mining appears to hang - shows actual loop progression.
+
+## Previous Changes (v2.25.35)
 - **Post-Hash-Comparison Loop Continuation Log**: Added INFO-level logging immediately after hash comparison to verify loop continues to next iteration.
   - Logs after hash comparison for first 5 iterations to confirm loop progression.
   - Enables identification of whether loop continues after hash validation or stalls at that point.

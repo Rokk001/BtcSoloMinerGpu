@@ -2,7 +2,14 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.33)
+## Latest Changes (v2.25.34)
+- **Extended Loop Continuation Diagnostics**: Added INFO-level logging for second iteration and first 5 iterations to verify loop progression.
+  - Logs when second iteration starts to confirm loop continues after first iteration.
+  - Logs after int conversion for first 5 iterations to track hash processing.
+  - Logs after hash comparison for first 5 iterations to track validation logic.
+  - Enables verification that mining loop continues beyond first iteration and identifies where it might stall.
+
+## Previous Changes (v2.25.33)
 - **First Iteration Detailed Diagnostics**: Added comprehensive INFO-level logging for the first nonce iteration to pinpoint exact hang locations.
   - Logs at first iteration start with nonce_int value.
   - Logs after nonce conversion, block header creation, and unhexlify operations.

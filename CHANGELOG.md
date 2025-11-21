@@ -5,6 +5,15 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.34] - 2025-11-21
+
+### Added
+- **Extended Loop Continuation Diagnostics**: Added INFO-level logging for second iteration and first 5 iterations to verify loop progression.
+  - Logs when second iteration starts to confirm loop continues after first iteration.
+  - Logs after int conversion for first 5 iterations to track hash processing.
+  - Logs after hash comparison for first 5 iterations to track validation logic.
+  - Enables verification that mining loop continues beyond first iteration and identifies where it might stall.
+
 ## [2.25.33] - 2025-11-21
 
 ### Added

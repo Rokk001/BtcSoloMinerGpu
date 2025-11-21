@@ -128,9 +128,14 @@ def update_status(key: str, value):
 
         # Auto-save periodically
         _save_counter += 1
-        if _save_counter >= AUTO_SAVE_INTERVAL:
+        should_save = _save_counter >= AUTO_SAVE_INTERVAL
+        if should_save:
             _save_counter = 0
-            _auto_save_statistics()
+    
+    # CRITICAL FIX: Call _auto_save_statistics() OUTSIDE the STATUS_LOCK block
+    # to avoid deadlock (it tries to acquire STATUS_LOCK again)
+    if should_save:
+        _auto_save_statistics()
 
 def _auto_save_statistics():
     """Auto-save statistics to persistent storage."""

@@ -5,6 +5,16 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.39] - 2025-11-21
+
+### Fixed
+- **Critical Deadlock Bug in update_status()**: Fixed deadlock that caused mining loop to hang after first iteration.
+  - `update_status()` was calling `_auto_save_statistics()` while holding `STATUS_LOCK`.
+  - `_auto_save_statistics()` tried to acquire `STATUS_LOCK` again, causing deadlock.
+  - Fixed by calling `_auto_save_statistics()` outside the `STATUS_LOCK` block.
+  - This was the root cause of mining appearing to hang - the loop was actually deadlocked.
+  - Mining should now work correctly and continue beyond the first iteration.
+
 ## [2.25.38] - 2025-11-21
 
 ### Added

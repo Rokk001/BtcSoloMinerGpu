@@ -2,7 +2,15 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.38)
+## Latest Changes (v2.25.39)
+- **Critical Deadlock Bug Fix**: Fixed deadlock that caused mining loop to hang after first iteration.
+  - `update_status()` was calling `_auto_save_statistics()` while holding `STATUS_LOCK`.
+  - `_auto_save_statistics()` tried to acquire `STATUS_LOCK` again, causing deadlock.
+  - Fixed by calling `_auto_save_statistics()` outside the `STATUS_LOCK` block.
+  - This was the root cause of mining appearing to hang - the loop was actually deadlocked.
+  - Mining should now work correctly and continue beyond the first iteration.
+
+## Previous Changes (v2.25.38)
 - **Extended Exception Logging for First 5 Iterations**: Added ERROR-level logging for exceptions in nonce conversion for first 5 iterations.
   - Logs exceptions during nonce conversion for first 5 iterations to identify if loop hangs due to exceptions.
   - Enables identification of whether loop stalls due to unhandled exceptions in later iterations.

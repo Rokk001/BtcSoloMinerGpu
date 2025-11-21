@@ -5,6 +5,12 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.30] - 2025-11-21
+
+### Maintenance
+- **Documentation Update**: Updated PROJECT_STATUS.md and CHANGELOG.md to reflect current state.
+- **Release Preparation**: Ensured all changes are properly documented and tagged for GitHub release.
+
 ## [2.25.29] - 2025-11-21
 
 ### Changed

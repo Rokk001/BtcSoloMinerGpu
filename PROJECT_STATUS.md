@@ -2,7 +2,10 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.29)
+## Latest Changes (v2.25.30)
+- **Maintenance Release**: Documentation updates and release preparation.
+
+## Previous Changes (v2.25.29)
 - **REST-Only Dashboard Updates**: Removed Socket.IO entirely. The frontend now polls `/api/status` via `fetch` and the backend serves plain Flask responses.
   - Simplifies reverse-proxy setups (no WebSocket support required) and removes the socket client bundle.
   - Added `/api/status` endpoint; performance/history tracking now happens inside `update_status`.

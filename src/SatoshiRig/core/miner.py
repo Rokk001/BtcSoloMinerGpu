@@ -2124,10 +2124,16 @@ class Miner:
                             "CPU: Starting nonce loop, batch_size=%d, start_nonce=%d, hash_count=%d",
                             num_nonces_per_batch,
                             self.cpu_nonce_counter,
-                            hash_count
+                            hash_count,
                         )
 
                         for i_nonce in range(num_nonces_per_batch):
+                            # CRITICAL: Log first iteration start
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: Starting first iteration, nonce_int=%d",
+                                    (self.cpu_nonce_counter + i_nonce) % (2**32)
+                                )
                             nonce_int = (self.cpu_nonce_counter + i_nonce) % (2**32)
                             _vlog(
                                 self.log,
@@ -2138,12 +2144,24 @@ class Miner:
                                 trial_nonce_hex = self._int_to_little_endian_hex(
                                     nonce_int, 4
                                 )
+                                # CRITICAL: Log after nonce conversion for first iteration
+                                if i_nonce == 0:
+                                    self.log.info(
+                                        "CPU: First iteration nonce converted: trial_nonce_hex=%s",
+                                        trial_nonce_hex
+                                    )
                                 _vlog(
                                     self.log,
                                     self._verbose_logging,
                                     f"LOOP: CPU nonce converted to hex: trial_nonce_hex={trial_nonce_hex}",
                                 )
                             except (ValueError, TypeError) as e:
+                                # CRITICAL: Log exception for first iteration
+                                if i_nonce == 0:
+                                    self.log.error(
+                                        "CPU: First iteration nonce conversion failed: %s: %s",
+                                        type(e).__name__, e
+                                    )
                                 _vlog(
                                     self.log,
                                     self._verbose_logging,
@@ -2154,6 +2172,12 @@ class Miner:
                             trial_block_header_hex = (
                                 block_header_hex[:-8] + trial_nonce_hex
                             )
+                            # CRITICAL: Log after block header creation for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration block header created, length=%d",
+                                    len(trial_block_header_hex)
+                                )
                             _vlog(
                                 self.log,
                                 self._verbose_logging,
@@ -2163,12 +2187,24 @@ class Miner:
                                 trial_block_header_bytes = binascii.unhexlify(
                                     trial_block_header_hex
                                 )
+                                # CRITICAL: Log after unhexlify for first iteration
+                                if i_nonce == 0:
+                                    self.log.info(
+                                        "CPU: First iteration block header unhexlified, bytes length=%d",
+                                        len(trial_block_header_bytes)
+                                    )
                                 _vlog(
                                     self.log,
                                     self._verbose_logging,
                                     f"LOOP: CPU block header unhexlified, bytes length={len(trial_block_header_bytes)}",
                                 )
                             except binascii.Error as e:
+                                # CRITICAL: Log exception for first iteration
+                                if i_nonce == 0:
+                                    self.log.error(
+                                        "CPU: First iteration unhexlify failed: %s",
+                                        e
+                                    )
                                 _vlog(
                                     self.log,
                                     self._verbose_logging,
@@ -2179,6 +2215,11 @@ class Miner:
                                 update_status("total_hashes", self.total_hash_count)
                                 continue
 
+                            # CRITICAL: Log before first SHA256 for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration computing SHA256 intermediate hash"
+                                )
                             _vlog(
                                 self.log,
                                 self._verbose_logging,
@@ -2187,11 +2228,22 @@ class Miner:
                             cpu_hash_intermediate = hashlib.sha256(
                                 trial_block_header_bytes
                             ).digest()
+                            # CRITICAL: Log after first SHA256 for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration intermediate hash computed, length=%d",
+                                    len(cpu_hash_intermediate)
+                                )
                             _vlog(
                                 self.log,
                                 self._verbose_logging,
                                 f"LOOP: CPU intermediate hash computed, digest length={len(cpu_hash_intermediate)}",
                             )
+                            # CRITICAL: Log before second SHA256 for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration computing SHA256 final hash"
+                                )
                             _vlog(
                                 self.log,
                                 self._verbose_logging,
@@ -2200,6 +2252,12 @@ class Miner:
                             cpu_hash_bin = hashlib.sha256(
                                 cpu_hash_intermediate
                             ).digest()
+                            # CRITICAL: Log after second SHA256 for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration final hash computed, length=%d",
+                                    len(cpu_hash_bin)
+                                )
                             _vlog(
                                 self.log,
                                 self._verbose_logging,
@@ -2208,6 +2266,12 @@ class Miner:
 
                             try:
                                 cpu_hash_big = binascii.hexlify(cpu_hash_bin).decode()
+                                # CRITICAL: Log after hexlify for first iteration
+                                if i_nonce == 0:
+                                    self.log.info(
+                                        "CPU: First iteration hash hexlified, length=%d",
+                                        len(cpu_hash_big)
+                                    )
                                 _vlog(
                                     self.log,
                                     self._verbose_logging,
@@ -2216,12 +2280,24 @@ class Miner:
                                 cpu_hash_little = self._hex_to_little_endian(
                                     cpu_hash_big, 64
                                 )
+                                # CRITICAL: Log after little-endian conversion for first iteration
+                                if i_nonce == 0:
+                                    self.log.info(
+                                        "CPU: First iteration hash converted to little-endian, length=%d",
+                                        len(cpu_hash_little)
+                                    )
                                 _vlog(
                                     self.log,
                                     self._verbose_logging,
                                     f"LOOP: CPU hash converted to little-endian, length={len(cpu_hash_little)}, hash[:32]={cpu_hash_little[:32]}...",
                                 )
                             except Exception as e:
+                                # CRITICAL: Log exception for first iteration
+                                if i_nonce == 0:
+                                    self.log.error(
+                                        "CPU: First iteration hash conversion failed: %s: %s",
+                                        type(e).__name__, e
+                                    )
                                 _vlog(
                                     self.log,
                                     self._verbose_logging,
@@ -2232,22 +2308,41 @@ class Miner:
                                 update_status("total_hashes", self.total_hash_count)
                                 continue
 
+                            # CRITICAL: Log before update_status for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration before update_status, hash_count=%d, total_hash_count=%d",
+                                    hash_count,
+                                    self.total_hash_count
+                                )
                             hash_count += 1
                             self.total_hash_count += 1
+                            # CRITICAL: Log before and after update_status call for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration calling update_status('total_hashes', %d)",
+                                    self.total_hash_count
+                                )
                             update_status("total_hashes", self.total_hash_count)
+                            # CRITICAL: Log after update_status for first iteration
+                            if i_nonce == 0:
+                                self.log.info(
+                                    "CPU: First iteration update_status completed, hash_count=%d",
+                                    hash_count
+                                )
                             _vlog(
                                 self.log,
                                 self._verbose_logging,
                                 f"LOOP: CPU hash_count incremented to {hash_count}, total_hash_count={self.total_hash_count}",
                             )
-                            
+
                             # CRITICAL: Log progress periodically for visibility
                             if (i_nonce + 1) % 50 == 0:
                                 self.log.info(
                                     "CPU: Progress %d/%d nonces, hash_count=%d",
                                     i_nonce + 1,
                                     num_nonces_per_batch,
-                                    hash_count
+                                    hash_count,
                                 )
 
                             try:

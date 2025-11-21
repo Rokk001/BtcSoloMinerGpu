@@ -2,7 +2,16 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.32)
+## Latest Changes (v2.25.33)
+- **First Iteration Detailed Diagnostics**: Added comprehensive INFO-level logging for the first nonce iteration to pinpoint exact hang locations.
+  - Logs at first iteration start with nonce_int value.
+  - Logs after nonce conversion, block header creation, and unhexlify operations.
+  - Logs before and after both SHA256 hash computations (intermediate and final).
+  - Logs before and after hash hexlify and little-endian conversion.
+  - Logs before and after update_status() call to identify potential blocking points.
+  - Enables precise identification of where the mining loop hangs during the first iteration.
+
+## Previous Changes (v2.25.32)
 - **Comprehensive CPU Mining Loop Diagnostics**: Added INFO-level logging throughout the nonce loop to diagnose hangs.
   - Logs at loop start with batch_size, start_nonce, and hash_count.
   - Logs progress every 50 iterations during the loop execution.

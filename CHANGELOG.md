@@ -5,6 +5,17 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.33] - 2025-11-21
+
+### Added
+- **First Iteration Detailed Diagnostics**: Added comprehensive INFO-level logging for the first nonce iteration to pinpoint exact hang locations.
+  - Logs at first iteration start with nonce_int value.
+  - Logs after nonce conversion, block header creation, and unhexlify operations.
+  - Logs before and after both SHA256 hash computations (intermediate and final).
+  - Logs before and after hash hexlify and little-endian conversion.
+  - Logs before and after update_status() call to identify potential blocking points.
+  - Enables precise identification of where the mining loop hangs during the first iteration.
+
 ## [2.25.32] - 2025-11-21
 
 ### Added

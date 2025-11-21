@@ -2080,7 +2080,7 @@ INDEX_HTML = """
         }
         
     </style>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
     <div class="container">

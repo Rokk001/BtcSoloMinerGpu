@@ -5,6 +5,13 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.26] - 2025-11-21
+
+### Fixed
+- **Socket.IO Client Dependency**: Dashboard now loads the Socket.IO client directly from the Flask server (`/socket.io/socket.io.js`) instead of a public CDN.
+  - Prevents JavaScript errors in restricted Docker environments without outbound internet access.
+  - Ensures `io()` is always defined so the dashboard script initializes, restoring wallet/pool/hashrate updates immediately at container startup.
+
 ## [2.25.25] - 2025-11-21
 
 ### Fixed

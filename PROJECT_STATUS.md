@@ -2,7 +2,12 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.25)
+## Latest Changes (v2.25.26)
+- **Socket.IO Client Served Locally**: Dashboard now pulls `socket.io.js` from the Flask server instead of an external CDN.
+  - Fixes `io is not defined` errors when the container has no outbound internet access (typical Docker deployments).
+  - Ensures the dashboard script always initializes so wallet/pool/hashrate data appears immediately.
+
+## Previous Changes (v2.25.25)
 - **Web Dashboard JavaScript Fix**: Removed stray `)`/`.catch` from `toggleMining()` (left over from the `/api/status` refactor).
   - Syntax error prevented the entire dashboard script from loading, so buttons like Pause/Resume or tab switching were broken.
   - After the fix the dashboard loads again, `toggleMining`/`showTab` are defined, and status updates resume immediately.

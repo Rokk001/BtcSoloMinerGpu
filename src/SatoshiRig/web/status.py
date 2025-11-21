@@ -3,15 +3,12 @@
 import threading
 from collections import deque
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict
 
 # Import persistent statistics
 from .stats_persistence import load_statistics, save_statistics, merge_statistics
 
 STATUS_LOCK = threading.Lock()
-
-# Global reference to SocketIO instance for immediate status updates
-_socketio_instance: Optional[object] = None
 
 # Load persistent statistics on startup
 _persistent_stats = load_statistics()
@@ -102,6 +99,9 @@ def update_status(key: str, value):
                         STATS["hash_rate_samples"]
                     )
                     STATUS["average_hash_rate"] = avg
+            STATUS["hash_rate_history"].append(value)
+        if key == "best_difficulty" and value:
+            STATUS["difficulty_history"].append(value)
         if key == "total_hashes":
             with STATS_LOCK:
                 # Calculate session increment (current - previous value)
@@ -131,25 +131,6 @@ def update_status(key: str, value):
         if _save_counter >= AUTO_SAVE_INTERVAL:
             _save_counter = 0
             _auto_save_statistics()
-
-    # Emit selective updates to frontend to avoid flooding SocketIO
-    try:
-        if _socketio_instance is not None and key in (
-            "hash_rate",
-            "total_hashes",
-            "last_hash",
-            "pool_connected",
-            "shares_submitted",
-        ):
-            try:
-                _socketio_instance.emit("status", get_status())
-            except Exception:
-                # Ignore emission errors (e.g., socket not ready)
-                pass
-    except Exception:
-        # Defensive: any error here should not break mining
-        pass
-
 
 def _auto_save_statistics():
     """Auto-save statistics to persistent storage."""
@@ -242,12 +223,6 @@ def add_share(accepted: bool, response: str = None):
         update_status("shares_submitted", STATUS["shares_submitted"])
 
 
-def set_socketio_instance(socketio_instance):
-    """Set the SocketIO instance for immediate status updates"""
-    global _socketio_instance
-    _socketio_instance = socketio_instance
-
-
 def update_pool_status(connected: bool, host: str = None, port: int = None):
     """Update pool connection status and immediately notify frontend via SocketIO"""
     with STATUS_LOCK:
@@ -256,11 +231,3 @@ def update_pool_status(connected: bool, host: str = None, port: int = None):
             STATUS["pool_host"] = host
         if port:
             STATUS["pool_port"] = port
-
-    # Immediately notify frontend via SocketIO if available
-    if _socketio_instance is not None:
-        try:
-            _socketio_instance.emit("status", get_status())
-        except Exception:
-            # Ignore errors if SocketIO is not ready or clients are not connected
-            pass

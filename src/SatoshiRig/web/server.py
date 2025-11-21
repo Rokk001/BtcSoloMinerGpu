@@ -11,17 +11,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from flask import Flask, Response, render_template_string, jsonify, request
-from flask_socketio import SocketIO, emit
-
-# Fix for "Too many packets in payload" error - increase max_decode_packets
-try:
-    from engineio.payload import Payload
-
-    Payload.max_decode_packets = (
-        500  # Increase from default (likely 16) to handle large payloads
-    )
-except ImportError:
-    pass  # Fallback if engineio is not available
 
 from ..core.state import MinerState
 from ..utils.formatting import format_hash_number, format_time_to_block
@@ -64,7 +53,6 @@ from .status import (
     get_status,
     add_share,
     update_pool_status,
-    set_socketio_instance,
 )
 
 
@@ -260,29 +248,9 @@ def stop_performance_monitoring():
 
 # Configure logging from environment (can be overridden at runtime via API)
 configure_logging()
-app = Flask(__name__, static_url_path="/static")
+app = Flask(__name__)
 # Use environment variable for SECRET_KEY or generate a random one
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
-# CORS: Allow specific origins or localhost by default for security
-cors_origins = os.environ.get(
-    "CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000"
-).split(",")
-# Configure SocketIO with increased buffer size to handle larger payloads
-# This fixes the "Too many packets in payload" error
-socketio = SocketIO(
-    app,
-    cors_allowed_origins=cors_origins,
-    max_http_buffer_size=10e6,  # 10MB buffer size (default is 100KB) - increased to handle large payloads
-    max_packet_size=10e6,  # 10MB max packet size
-    ping_timeout=60,
-    ping_interval=25,
-    logger=True,  # Enable SocketIO logging to aid debugging of handshake/transport
-    engineio_logger=True,
-    async_mode="threading",  # Use threading mode for better compatibility
-)
-
-# Register SocketIO instance with status module for immediate updates
-set_socketio_instance(socketio)
 
 
 @app.route("/favicon.ico")
@@ -320,6 +288,19 @@ def favicon_svg():
 @app.route("/")
 def index():
     return render_template_string(INDEX_HTML)
+
+
+@app.route("/api/status", methods=["GET"])
+def api_status():
+    """Return current miner status for polling clients."""
+    try:
+        status = get_status()
+        # Update history deques for charts (handled in status module)
+        return jsonify({"success": True, "status": status})
+    except Exception as exc:
+        logger = logging.getLogger("SatoshiRig.web")
+        logger.error(f"Failed to fetch status: {exc}")
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @app.route("/api/stop", methods=["POST"])
@@ -992,50 +973,9 @@ def set_db_retention():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@socketio.on_error_default
-def default_error_handler(e):
-    """Handle SocketIO errors gracefully"""
-    logger = logging.getLogger("SatoshiRig.web")
-    logger.warning(f"SocketIO error: {e}")
-    return False  # Don't propagate the error
-
-
-@socketio.on("connect")
-def handle_connect():
-    emit("status", get_status())
-
-
-@socketio.on("get_status")
-def handle_get_status():
-    emit("status", get_status())
-
-
-# Global flag to control broadcast thread
-_broadcast_running = False
-
-
-def broadcast_status():
-    global _broadcast_running
-    _broadcast_running = True
-    while _broadcast_running:
-        try:
-            with STATUS_LOCK:
-                # Add current values to history
-                if STATUS["hash_rate"] > 0:
-                    STATUS["hash_rate_history"].append(STATUS["hash_rate"])
-                if STATUS["best_difficulty"] > 0:
-                    STATUS["difficulty_history"].append(STATUS["best_difficulty"])
-            socketio.emit("status", get_status())
-        except Exception as e:
-            logger = logging.getLogger("SatoshiRig.web")
-            logger.error(f"Error in broadcast_status: {e}")
-        time.sleep(2)
-
-
 def stop_web_server():
     """Stop background threads for web server"""
-    global _broadcast_running, _performance_running
-    _broadcast_running = False
+    global _performance_running
     stop_performance_monitoring()
 
 
@@ -1049,10 +989,9 @@ def start_web_server(host: str = "0.0.0.0", port: int = 5000):
     with STATS_LOCK:
         STATS["start_time"] = start_timestamp
     # Start background threads
-    threading.Thread(target=broadcast_status, daemon=True).start()
     start_performance_monitoring()
     try:
-        socketio.run(app, host=host, port=port, allow_unsafe_werkzeug=True)
+        app.run(host=host, port=port, threaded=True)
     finally:
         # Cleanup on shutdown
         stop_web_server()
@@ -2080,7 +2019,6 @@ INDEX_HTML = """
         }
         
     </style>
-    <script src="/static/js/socket.io.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -2497,8 +2435,7 @@ INDEX_HTML = """
         </div>
     </div>
     <script>
-        // Allow Socket.IO to negotiate the best available transport (WebSocket preferred)
-        const socket = io();
+        const REFRESH_INTERVAL_MS = 3000;
         let startTime = null;
         let autoRefresh = true;
         let refreshInterval = null;
@@ -2710,6 +2647,31 @@ INDEX_HTML = """
         
         let miningPaused = false;
 
+        async function fetchStatus(showErrors = false) {
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const payload = await response.json();
+                if (payload.success === false) {
+                    if (showErrors) {
+                        alert(`Failed to load status: ${payload.message || payload.error || 'Unknown error'}`);
+                    }
+                    return;
+                }
+                const statusData = payload.status || payload.data || payload;
+                if (statusData) {
+                    applyStatus(statusData);
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                if (showErrors) {
+                    alert(`Error fetching status: ${error.message}`);
+                }
+            }
+        }
+
         function toggleMining() {
             // Use current miningPaused state (inverted: paused = not running)
             const isRunning = !miningPaused;
@@ -2729,6 +2691,7 @@ INDEX_HTML = """
                         miningPaused = true;
                         document.getElementById('autoRefreshText').textContent = '▶️ Resume';
                         console.log('Mining paused successfully');
+                        fetchStatus();
                     } else {
                         alert(`Failed to pause mining: ${data.message || data.error || 'Unknown error'}`);
                         console.error('Error pausing mining:', data);
@@ -2753,6 +2716,7 @@ INDEX_HTML = """
                         miningPaused = false;
                         document.getElementById('autoRefreshText').textContent = '⏸️ Pause';
                         console.log('Mining started/resumed successfully');
+                        fetchStatus();
                     } else {
                         alert(`Failed to start mining: ${data.message || data.error || 'Unknown error'}`);
                         console.error('Error starting mining:', data);
@@ -2770,6 +2734,7 @@ INDEX_HTML = """
             const pauseText = miningPaused ? '▶️ Resume' : '⏸️ Pause';
             document.getElementById('autoRefreshText').textContent = autoRefresh ? pauseText : '⏸️ Pause';
             if (autoRefresh) {
+                fetchStatus();
                 startRefresh();
             } else {
                 clearInterval(refreshInterval);
@@ -2779,8 +2744,10 @@ INDEX_HTML = """
         function startRefresh() {
             if (refreshInterval) clearInterval(refreshInterval);
             refreshInterval = setInterval(() => {
-                if (autoRefresh) socket.emit('get_status');
-            }, 3000);
+                if (autoRefresh) {
+                    fetchStatus();
+                }
+            }, REFRESH_INTERVAL_MS);
         }
 
         // Tab Navigation
@@ -3027,16 +2994,6 @@ INDEX_HTML = """
         const savedTab = localStorage.getItem('activeTab') || 'overview';
         showTab(savedTab);
 
-        socket.on('connect', () => {
-            // Request initial status on connect
-            socket.emit('get_status');
-            startRefresh();
-        });
-
-        socket.on('disconnect', () => {
-            // Connection status removed - redundant information
-        });
-
         // Format hash numbers with magnitude units (K, M, G, T, P, E)
         function formatHashNumber(value, unit = 'H/s') {
             if (value === 0 || !value) return '0 ' + unit;
@@ -3059,7 +3016,7 @@ INDEX_HTML = """
             }
         }
 
-        socket.on('status', (data) => {
+        function applyStatus(data) {
             if (!startTime && data.start_time) {
                 // Handle both Unix timestamp (number) and ISO string (backward compatibility)
                 if (typeof data.start_time === 'number') {
@@ -3258,9 +3215,12 @@ INDEX_HTML = """
             
             // Update charts
             updateCharts(data);
-        });
+        }
 
-        startRefresh();
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchStatus();
+            startRefresh();
+        });
     </script>
 </body>
 </html>

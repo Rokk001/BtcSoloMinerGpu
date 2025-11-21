@@ -2,7 +2,12 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.28)
+## Latest Changes (v2.25.29)
+- **REST-Only Dashboard Updates**: Removed Socket.IO entirely. The frontend now polls `/api/status` via `fetch` and the backend serves plain Flask responses.
+  - Simplifies reverse-proxy setups (no WebSocket support required) and removes the socket client bundle.
+  - Added `/api/status` endpoint; performance/history tracking now happens inside `update_status`.
+
+## Previous Changes (v2.25.28)
 - **Socket.IO WebSocket Transport**: Dashboard no longer forces polling-only connections; Socket.IO now negotiates WebSockets automatically.
   - Fixes periodic UI resets caused by reverse proxies timing out long-polling requests after ~20 seconds.
   - Reduces HTTP chatter and keeps mining/pool stats continuously populated.

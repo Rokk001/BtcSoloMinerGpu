@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SatoshiRig"
-version = "2.25.28"
+version = "2.25.29"
 description = "Bitcoin solo miner with configurable backends and Docker support"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,8 +15,7 @@ dependencies = [
   "colorama==0.4.6",
   "psutil>=5.9.0",
   "flask==3.0.0",
-  "flask-socketio==5.3.6",
-  "python-socketio==5.10.0"
+  # Socket.IO removed; plain Flask + REST polling
 ]
 
 [project.optional-dependencies]

@@ -5,6 +5,16 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.29] - 2025-11-21
+
+### Changed
+- **Pure REST Polling Dashboard**: Replaced Socket.IO with plain `fetch('/api/status')` polling, so the UI works behind simple HTTP proxies without WebSocket support.
+  - Added `/api/status` endpoint and removed all socket emission logic/broadcast threads.
+  - Frontend now schedules periodic REST calls and reuses the same rendering logic.
+
+### Removed
+- **Socket.IO Dependencies**: Deleted `flask-socketio`, `python-socketio`, the bundled client JS, and related configuration.
+
 ## [2.25.28] - 2025-11-21
 
 ### Fixed

@@ -5,6 +5,13 @@ All notable changes to SatoshiRig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.25.28] - 2025-11-21
+
+### Fixed
+- **WebSocket Transport Enabled**: Dashboard now allows Socket.IO to use WebSockets (with automatic fallback to polling).
+  - Fixes repeated reconnects/empty UI caused by reverse proxies timing out long-polling requests after ~20 s.
+  - Significantly reduces HTTP chatter and keeps status cards populated continuously.
+
 ## [2.25.27] - 2025-11-21
 
 ### Fixed

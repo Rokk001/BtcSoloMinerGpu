@@ -2497,8 +2497,8 @@ INDEX_HTML = """
         </div>
     </div>
     <script>
-        // Force polling transport to avoid websocket upgrade failures behind proxies
-        const socket = io({ transports: ['polling'] });
+        // Allow Socket.IO to negotiate the best available transport (WebSocket preferred)
+        const socket = io();
         let startTime = null;
         let autoRefresh = true;
         let refreshInterval = null;

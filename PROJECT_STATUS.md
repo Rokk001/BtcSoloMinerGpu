@@ -2,7 +2,12 @@
 
 Updated: 2025-11-21
 
-## Latest Changes (v2.25.27)
+## Latest Changes (v2.25.28)
+- **Socket.IO WebSocket Transport**: Dashboard no longer forces polling-only connections; Socket.IO now negotiates WebSockets automatically.
+  - Fixes periodic UI resets caused by reverse proxies timing out long-polling requests after ~20 seconds.
+  - Reduces HTTP chatter and keeps mining/pool stats continuously populated.
+
+## Previous Changes (v2.25.27)
 - **Socket.IO Client Bundled Locally**: Added `static/js/socket.io.min.js` to the repo and load it from Flask’s `/static` endpoint.
   - Eliminates the CDN dependency so air‑gapped Docker deployments work out-of-the-box.
   - Prevents HTTP 400 / “unsupported protocol version” errors and guarantees `io()` is defined before dashboard JS runs.
